@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LMU · 遥测工作台</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script type="module" src="/assets/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="LMU 遥测工作台首页"><span class="brand-mark">L/</span><span>LMU<span class="brand-sub">TELEMETRY WORKSPACE</span></span></a>
+    <div class="workspace-label"><span class="status-dot"></span> 本地工作空间 <span class="version">V0.1</span></div>
+    <label id="dropzone" class="import-box" for="file-input"><span class="import-icon">＋</span><strong>导入遥测文件</strong><span>点击选择或拖入 .duckdb</span><small>文件保存在本机 · 最大 128 MB</small></label>
+    <input id="file-input" class="sr-only" type="file" accept=".duckdb" aria-label="选择遥测文件">
+    <div class="section-label">练习记录 <span id="session-count">0</span></div>
+    <nav id="sessions" aria-label="已导入的练习记录"></nav>
+    <div class="sidebar-footer"><div class="avatar">D</div><div><strong id="driver-name">本地车手</strong><small>数据仅存储在这台电脑</small></div></div>
+  </aside>
+  <main>
+    <header class="topbar"><span>工作空间 <span class="slash">/</span> <strong>练习分析</strong></span><span class="local-badge"><span class="status-dot"></span> LOCAL</span></header>
+    <section id="empty" class="empty-state"><span class="eyebrow">YOUR NEXT LAP STARTS HERE</span><h1>读懂每一次驾驶。</h1><p>导入 LMU 原生遥测，查看驾驶曲线，<br>把两圈放在同一坐标下逐段对比。</p><button id="empty-import" class="primary">导入第一份遥测 <span>↗</span></button><div class="empty-channels">速度 <span>·</span> 刹车 <span>·</span> 油门 <span>·</span> 转向 <span>·</span> 挡位</div></section>
+    <section id="workspace" hidden>
+      <div class="session-heading"><div><span class="eyebrow">SESSION OVERVIEW</span><h1 id="track-name">—</h1><p id="car-name"></p></div><span id="session-type" class="outline-badge">练习</span></div>
+      <nav class="view-navigation" aria-label="分析视图"><button data-view="telemetry" aria-pressed="true">驾驶曲线</button><button data-view="timing" aria-pressed="false">圈速总览</button><button data-view="inventory" aria-pressed="false">数据目录</button></nav>
+      <section id="view-telemetry">
+      <div class="metrics"><div><span>最短记录圈</span><strong id="best-lap">—</strong><small>完整圈 · 有效性未核实</small></div><div><span>完整圈数</span><strong id="lap-count">—</strong><small id="fragment-count">—</small></div><div><span>录制时长</span><strong id="duration">—</strong><small id="recorded-date">—</small></div></div>
+      <div class="analysis-header"><div><h2>驾驶数据</h2><span id="selection-note">选择圈次进行分析</span></div><div class="legend"><span class="main-dot"></span> 当前圈 <span class="ref-dot"></span> 参考圈</div></div>
+      <div class="controls"><label><span>当前圈</span><select id="lap-select" aria-label="当前圈"></select></label><label><span>参考圈</span><select id="reference-select" aria-label="参考圈"></select></label><div class="axis-switch" role="group" aria-label="横轴"><button id="axis-distance" aria-pressed="true">距离</button><button id="axis-time" aria-pressed="false">时间</button></div><button id="reset-zoom" class="quiet">重置视图 ↺</button></div>
+      <div class="chart-toolbar"><span id="cursor-position">移动鼠标查看数据</span><span>滚轮缩放 · 拖动平移 · 双击重置</span></div>
+      <div id="charts" class="charts" tabindex="0" role="group" aria-label="联动遥测曲线，左右方向键移动游标"></div>
+      <div class="chart-footnote"><span id="axis-note">—</span><span>转向单位为 %，非方向盘角度</span></div>
+      <details class="data-details"><summary>数据说明与读取状态 <span id="diagnostic-count"></span></summary><p>连续通道时间轴由 GPS 时钟与采样频率重建；游标会注明原始采样、插值或保持。缺失数据保留为空，挡位按事件保持。当前版本不判断圈次的官方有效性。</p><p id="source-file"></p><ul id="diagnostics"></ul></details>
+      </section>
+      <section id="view-timing" hidden aria-label="圈速总览">
+        <p id="timing-status" class="view-status" role="status"></p>
+        <div id="timing-content" hidden>
+          <div class="timing-heading"><div><span class="eyebrow">LAP TIME REPORT</span><h2>每一圈，都有据可查。</h2></div><span id="timing-count" class="outline-badge"></span></div>
+          <div class="metrics timing-metrics"><div><span>最快记录圈</span><strong id="timing-best">—</strong><small>纳入统计的完整圈</small></div><div><span>平均圈速</span><strong id="timing-average">—</strong><small id="timing-average-note">—</small></div><div><span>理论最快圈</span><strong id="timing-theoretical">—</strong><small>同一练习的最短 S1 + S2 + S3</small></div><div><span>圈速标准差</span><strong id="timing-stddev">—</strong><small>数值越小，圈时越集中</small></div></div>
+          <div class="sector-summary" id="sector-summary"></div>
+          <div class="timing-table-header"><h2>全部圈次与分段</h2><span><i class="purple-dot"></i> 紫色为统计范围内最短分段</span></div>
+          <div class="table-scroll"><table class="timing-table"><caption class="sr-only">每圈圈时、S1、S2、S3 及与最快圈差值</caption><thead><tr><th scope="col">圈次</th><th scope="col">圈时</th><th scope="col">S1</th><th scope="col">S2</th><th scope="col">S3</th><th scope="col">距最快圈</th><th scope="col">统计状态</th></tr></thead><tbody id="timing-rows"></tbody><tfoot id="timing-totals"></tfoot></table></div>
+          <p id="timing-scope" class="info-note"></p><p id="timing-extra" class="info-note"></p>
+          <details class="data-details"><summary>统计口径与分段来源</summary><p id="timing-method"></p><p>平均值、最快圈和标准差只使用纳入统计的圈次。理论最快由这些圈中可核对的最短分段相加得到，保留原始精度计算后再显示到毫秒。缺失分段显示“—”，不补零；未完成圈只展示已完成且可核对的分段，不参与统计。当前无法确认游戏判定的有效圈 / 删圈状态。</p></details>
+        </div>
+      </section>
+      <section id="view-inventory" hidden aria-label="数据目录">
+        <p id="inventory-status" class="view-status" role="status"></p>
+        <div id="inventory-content" hidden><div class="timing-heading"><div><span class="eyebrow">TELEMETRY INVENTORY</span><h2>原始数据，还有这些可能。</h2></div><span id="inventory-count" class="outline-badge"></span></div><p id="inventory-note" class="info-note"></p>
+          <div class="inventory-controls"><label>搜索通道<input id="inventory-search" type="search" placeholder="例如 RPM、轮胎、温度"></label><label>筛选<select id="inventory-filter"><option value="all">全部通道与事件</option><option value="new">尚未展示</option><option value="candidate">变化数据候选</option><option value="review">需要核实</option><option value="constant">本样本为常量</option></select></label><span id="inventory-results"></span></div>
+          <div class="table-scroll"><table class="inventory-table"><caption class="sr-only">遥测字段、单位、采样率、数值范围及可视化建议</caption><thead><tr><th scope="col">字段 / 分类</th><th scope="col">采样</th><th scope="col">数值范围</th><th scope="col">可视化判断</th></tr></thead><tbody id="inventory-rows"></tbody></table></div>
+        </div>
+      </section>
+    </section>
+    <footer class="main-footer"><span>LMU DATA ANALYSIS</span><span>专注数据，由你判断。</span></footer>
+  </main>
+  <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

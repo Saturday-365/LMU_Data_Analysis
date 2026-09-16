@@ -1,7 +1,10 @@
 # Local telemetry and working outputs
 /samples/local/*
 !/samples/local/.gitkeep
+/samples/LMU_SourseData/
+/samples/RacingLabPicture/
 /outputs/
+/data/
 /logs/
 *.duckdb
 *.duckdb.wal

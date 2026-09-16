@@ -1,30 +1,29 @@
-# 内部数据约定草案
+# 内部数据约定
 
-以下是软件内部的候选模型，不是 LMU 原始数据库表结构。源表、字段映射、单位和时间基准必须在获得真实文件后验证。
+下表描述已实现的最小读取模型，不是 LMU 原始数据库表结构。JSON 字段见 [读取模块说明](reader-usage.md)，源结构见 [核验记录](sample-verification.md)。
 
 ## 模型
 
 | 对象 | 最小信息 | 规则 |
 | --- | --- | --- |
-| Recording | 源文件标识、识别结果、源结构版本（如可得）、诊断 | 本地路径不作为公开报告的默认内容 |
-| Session | 车辆、赛道、会话时间范围、记录来源 | 无法取得的元数据为空并显示未知 |
-| Lap | 圈号、开始 / 结束时间、圈时、完整性、有效性来源 | 残圈可以查看；官方有效性与数据完整性分开 |
-| Channel | 内部标识、源名称、显示名称、源单位、目标单位、类型 | 连续量、离散量、事件分开处理 |
-| Series | 通道标识、时间戳数组、数值数组、质量标记 | 保留原始时间点与缺失值，不要求通道等长 |
-| Diagnostic | 级别、代码、用户说明、受影响范围 | 区分文件不支持与局部通道不可用 |
+| Recording | 文件名、SHA-256、metadata、clock_s、catalog、series、segments、diagnostics | 会话元数据采用白名单，不导出身份字段 |
+| Segment | segment_id、source_lap、kind、start_s、end_s、lap_time_s、validity、contains_pit_state | 首尾片段与完整圈分开；官方有效性保持 unknown |
+| catalog 条目 | source_name、kind、unit、frequency_hz、table_present | 目录存在不代表非核心通道已解码 |
+| Series | key、source_name、unit、kind、times_s、values、frequency_hz、time_basis、phase_verified | 连续时钟明确标记 reconstructed；事件保留源 ts；缺值为 None |
+| Diagnostic | code、message、channel | 区分缺失、异常与时钟假设；无法安全解释的文件抛出 TelemetryError |
 
-## 核心展示通道候选
+## 已支持的核心通道
 
-| 通道 | 展示方式 | 需要核对 |
+| 通道 | 源表与单位 | 当前处理 |
 | --- | --- | --- |
-| 速度 | 连续曲线，优先 km/h | 源单位及速度定义 |
-| 油门 / 刹车 | 分别展示百分比曲线 | 0～1 或 0～100；过滤 / 未过滤输入含义 |
-| 转向 | 有符号曲线 | 归一化输入或角度；方向约定；不把输入比例当方向盘角度 |
-| 挡位 | 阶梯曲线 | 倒挡、空挡及前进挡编码 |
-| 圈内距离 | 横轴或独立通道 | 单位、起终点回绕、更新频率 |
-| 时间 | 横轴 | 会话时间 / 圈内时间 / 绝对时间的含义和单位 |
+| speed | Ground Speed，km/h | 保留源值，连续插值 |
+| throttle / brake | Throttle Pos / Brake Pos，% | 保留 0～100 源值；当前读取过滤版本 |
+| steering | Steering Pos，% | 保留有符号输入比例，不推测角度 |
+| gear | Gear，离散编码 | 最近事件保持，不做小数插值 |
+| distance | Lap Dist，m | 检查回绕与圈边界；不跨回绕或倒退插值 |
+| 时间 | GPS Time / 事件 ts，s | 会话时间和相对圈内时间分开，非现实 UTC 时间 |
 
-上述候选名字不是解析器可直接依赖的字段清单。
+未知单位不猜测转换，跳过该核心通道并诊断；非核心通道仅列入目录。完整圈按 1 起始的顺序索引选择，并保留 source_lap 以追溯源计数。
 
 ## 异常及对齐约定
 
@@ -38,4 +37,4 @@
 
 ## 获取样本后的待办
 
-记录表与列清单、字段类型、单位依据、采样间隔分布、时间基准、圈次边界、事件编码、游戏版本以及结构识别规则，再把已核实的映射写入版本化文档。
+已实现核心整数分频通道的 GPS 时钟步进映射，并保留 time_basis / phase_verified。后续仍需核实源采样相位、7 Hz 通道数量偏差、游戏版本、圈有效性和更多事件编码。单圈 JSON 的 provenance 标明 sample / interpolated / held / missing，不伪装成每个原始通道都有独立时间戳。

@@ -1,0 +1,2 @@
+# The inspection tool shares the reader's pinned dependency.
+-r requirements.txt
