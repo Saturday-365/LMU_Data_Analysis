@@ -82,6 +82,25 @@ class WebTests(unittest.TestCase):
         me = self.client.get('/api/v1/me', headers={'x-driver-id':'someone-else'}).json()
         self.assertEqual(me['id'], LOCAL_DRIVER_ID)
 
+    def test_trace_with_gps_and_invalid_optional_coordinate_unit(self):
+        import duckdb
+        with duckdb.connect(str(self.source)) as c:
+            for name, expression in [('GPS Latitude','60+sin(i/100.0)*0.001'),('GPS Longitude','cos(i/100.0)*0.002')]:
+                c.execute('INSERT INTO channelsList VALUES (?,10,?)',[name,'deg'])
+                c.execute(f'CREATE TABLE "{name}" AS SELECT {expression} AS value FROM range(300) t(i)')
+        session=self.upload(content=self.source.read_bytes()).json()['session']
+        url=f"/api/v1/sessions/{session['id']}/laps/{session['laps'][0]['id']}/trace"
+        result=self.client.get(url).json()
+        self.assertTrue(result['trajectory']['available'])
+        self.assertEqual(len(result['trajectory']['points']),100)
+        self.assertNotIn('latitude',result['channels'])
+        with duckdb.connect(str(self.source)) as c:
+            c.execute("UPDATE channelsList SET unit='rad' WHERE channelName='GPS Latitude'")
+        other=self.upload(content=self.source.read_bytes()).json()['session']
+        data=self.client.get(f"/api/v1/sessions/{other['id']}/laps/{other['laps'][0]['id']}/trace").json()
+        self.assertFalse(data['trajectory']['available'])
+        self.assertIn('speed',data['channels'])
+
     def test_timing_and_inventory_legacy_recordings_and_ownership(self):
         with TestClient(create_app(self.data, identity=TestIdentity())) as client:
             session = self.upload(client).json()['session']

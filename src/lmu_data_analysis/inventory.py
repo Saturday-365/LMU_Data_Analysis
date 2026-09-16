@@ -4,7 +4,7 @@ import duckdb
 from .reader import quote, digest, numeric
 from .models import TelemetryError
 
-DISPLAYED = {'Ground Speed', 'Brake Pos', 'Throttle Pos', 'Steering Pos', 'Gear', 'Lap Dist'}
+DISPLAYED = {'Ground Speed', 'Brake Pos', 'Throttle Pos', 'Steering Pos', 'Gear', 'Lap Dist', 'GPS Latitude', 'GPS Longitude'}
 TIMING = {'Lap', 'Lap Time', 'Current Sector', 'Current Sector1', 'Current Sector2', 'Last Sector1', 'Last Sector2'}
 
 

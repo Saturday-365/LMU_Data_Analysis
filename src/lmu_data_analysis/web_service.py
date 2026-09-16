@@ -11,6 +11,7 @@ from .reader import read_recording
 from .storage import BlobStore, SessionRepository
 from .timing import timing_summary
 from .inventory import inspect_channels
+from .trajectory import lap_trajectory
 
 
 class TelemetryService:
@@ -95,7 +96,8 @@ class TelemetryService:
                     "time_s": aligned["lap_time_s"], "distance_m": distance,
                     "distance_available": distance_available,
                     "channels": {name: data for name, data in aligned["channels"].items() if name != "distance"},
-                    "timing": "reconstructed", "validity": "unknown"}
+                    "timing": "reconstructed", "validity": "unknown",
+                    "trajectory": lap_trajectory(recording, lap['ordinal'])}
 
 
 def public_session(row, detail=False):

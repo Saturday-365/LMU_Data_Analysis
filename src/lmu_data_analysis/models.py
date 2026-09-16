@@ -55,6 +55,7 @@ class Recording:
     diagnostics: list[Diagnostic] = field(default_factory=list)
     distance_boundary_checks: list[dict] = field(default_factory=list)
     timing_events: dict[str, list[tuple]] = field(default_factory=dict)
+    position_series: dict[str, Series] = field(default_factory=dict)
 
     @property
     def complete_laps(self) -> list[Segment]:

@@ -1,0 +1,45 @@
+const finite = value => typeof value === 'number' && Number.isFinite(value);
+const valid = point => point && finite(point.x_m) && finite(point.y_m);
+const COLORS = ['#ff804d','#6ecbd5'];
+
+export class TrajectoryMap {
+  constructor(root, status, position, follow) {
+    this.root=root; this.status=status; this.position=position; this.follow=follow;
+    this.base=root.querySelector('canvas'); this.overlay=root.querySelectorAll('canvas')[1];
+    this.traces=[]; this.axis='distance'; this.cursor=null; this.scale=1; this.center=[0,0];
+    new ResizeObserver(()=>{if(!this.manuallyMoved)this.fit();else this.draw();}).observe(root);
+    root.addEventListener('wheel',event=>{if(!this.hasData)return;event.preventDefault();this.disableFollow();this.zoom(Math.exp(-Math.sign(event.deltaY)*.25),this.mouse(event));},{passive:false});
+    root.addEventListener('pointerdown',event=>{if(!this.hasData||event.button!==0)return;this.disableFollow();this.drag={start:this.mouse(event),center:[...this.center],moved:false};root.setPointerCapture(event.pointerId);});
+    root.addEventListener('pointermove',event=>{if(this.drag){const [x,y]=this.mouse(event),[sx,sy]=this.drag.start;if(Math.hypot(x-sx,y-sy)>3)this.drag.moved=true;this.center=[this.drag.center[0]-(x-sx)/this.scale,this.drag.center[1]+(y-sy)/this.scale];this.manuallyMoved=true;this.draw();}else this.pick(this.mouse(event));});
+    root.addEventListener('pointerup',event=>{if(this.drag&&!this.drag.moved)this.pick(this.mouse(event));this.drag=null;});
+    root.addEventListener('pointercancel',()=>this.drag=null);root.addEventListener('lostpointercapture',()=>this.drag=null);
+    root.addEventListener('pointerleave',()=>{if(!this.drag)this.onCursor?.(null);});
+    root.addEventListener('dblclick',()=>{this.disableFollow();this.fit();});
+    root.addEventListener('keydown',event=>{if(!this.hasData)return;const key=event.key;if(['+','=','-','0','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(key)){event.preventDefault();this.disableFollow();if(key==='0')this.fit();else if(['+','=','-'].includes(key))this.zoom(key==='-'?.8:1.25);else {this.center[0]+=key==='ArrowRight'?30/this.scale:key==='ArrowLeft'?-30/this.scale:0;this.center[1]+=key==='ArrowUp'?30/this.scale:key==='ArrowDown'?-30/this.scale:0;this.manuallyMoved=true;this.draw();}}});
+    follow.addEventListener('change',()=>{if(follow.checked)this.setCursor(this.cursor);});
+  }
+  mouse(event){const rect=this.root.getBoundingClientRect();return [event.clientX-rect.left,event.clientY-rect.top];}
+  disableFollow(){this.follow.checked=false;}
+  setData(traces,axis){this.traces=traces;this.axis=axis;this.cursor=null;this.hasData=false;this.bounds=[Infinity,Infinity,-Infinity,-Infinity];let frame=null;
+    this.lines=traces.map(trace=>{const track=trace.trajectory;if(!track?.available)return [];const key=JSON.stringify(track.frame);if(frame!==null&&key!==frame)return [];frame=key;const points=track.points;for(const point of points){if(!valid(point))continue;this.hasData=true;this.bounds[0]=Math.min(this.bounds[0],point.x_m);this.bounds[1]=Math.min(this.bounds[1],point.y_m);this.bounds[2]=Math.max(this.bounds[2],point.x_m);this.bounds[3]=Math.max(this.bounds[3],point.y_m);}return points;});
+    const missing=traces.map((t,i)=>this.lines[i].length?'':`${i?'参考圈':'当前圈'}：${t.trajectory?.reason||'走线不可用'}`).filter(Boolean);
+    const rates=[...new Set(traces.filter((_,i)=>this.lines[i].length).map(t=>t.trajectory.frequency_hz))];
+    this.status.textContent=this.hasData?`${rates.join(' / ')} Hz 坐标 · 两圈共用原点${missing.length?' · '+missing.join('；'):''}${traces.some(t=>t.trajectory?.gap_count)?' · 存在坐标缺口':''}`:missing.join('；')||'选择完整圈后显示走线';
+    this.fit();
+  }
+  fit(){this.manuallyMoved=false;if(this.hasData){const [minX,minY,maxX,maxY]=this.bounds;this.center=[(minX+maxX)/2,(minY+maxY)/2];this.fitScale=Math.max(.001,Math.min(Math.max(1,this.root.clientWidth-64)/Math.max(1,maxX-minX),Math.max(1,this.root.clientHeight-64)/Math.max(1,maxY-minY)));this.scale=this.fitScale;}this.draw();}
+  zoom(factor,anchor){if(!this.hasData)return;const point=anchor||[this.root.clientWidth/2,this.root.clientHeight/2];const before=this.world(point);this.scale=Math.max(this.fitScale*.5,Math.min(this.fitScale*256,this.scale*factor));const after=this.world(point);this.center[0]+=before[0]-after[0];this.center[1]+=before[1]-after[1];this.manuallyMoved=true;this.draw();}
+  world([x,y]){return [this.center[0]+(x-this.root.clientWidth/2)/this.scale,this.center[1]-(y-this.root.clientHeight/2)/this.scale];}
+  screen(point){return [this.root.clientWidth/2+(point.x_m-this.center[0])*this.scale,this.root.clientHeight/2-(point.y_m-this.center[1])*this.scale];}
+  context(canvas){const ratio=window.devicePixelRatio||1,w=Math.max(1,this.root.clientWidth),h=Math.max(1,this.root.clientHeight);if(canvas.width!==Math.round(w*ratio)||canvas.height!==Math.round(h*ratio)){canvas.width=Math.round(w*ratio);canvas.height=Math.round(h*ratio);}const c=canvas.getContext('2d');c.setTransform(ratio,0,0,ratio,0,0);c.clearRect(0,0,w,h);return {c,w,h};}
+  draw(){const {c,w,h}=this.context(this.base);if(!this.hasData){c.fillStyle='#82909c';c.font='12px Segoe UI';c.textAlign='center';c.fillText('暂无可用走线',w/2,h/2);this.drawCursor();return;}
+    c.lineWidth=1;c.strokeStyle='#252d34';const worldStep=10**Math.floor(Math.log10(70/this.scale));const step=worldStep*[1,2,5,10].find(v=>v*worldStep*this.scale>=45);const topLeft=this.world([0,0]),bottomRight=this.world([w,h]);c.beginPath();for(let x=Math.ceil(topLeft[0]/step)*step;x<=bottomRight[0];x+=step){const sx=this.screen({x_m:x,y_m:0})[0];c.moveTo(sx,0);c.lineTo(sx,h);}for(let y=Math.ceil(bottomRight[1]/step)*step;y<=topLeft[1];y+=step){const sy=this.screen({x_m:0,y_m:y})[1];c.moveTo(0,sy);c.lineTo(w,sy);}c.stroke();
+    this.lines.forEach((points,index)=>{c.strokeStyle=COLORS[index];c.lineWidth=index?1.5:1.8;c.setLineDash(index?[5,3]:[]);c.beginPath();let connected=false;for(const point of points){if(!valid(point)){connected=false;continue;}const [x,y]=this.screen(point);if(!connected||point.break_before)c.moveTo(x,y);else c.lineTo(x,y);connected=true;}c.stroke();c.setLineDash([]);const first=points.find(valid);if(first){const [x,y]=this.screen(first);c.fillStyle=COLORS[index];c.fillRect(x-3,y-3,6,6);if(index===0){c.font='10px Segoe UI';c.fillText('圈首',x+8,y-7);}}});
+    c.font='10px Segoe UI';c.fillStyle='#82929f';c.textAlign='right';c.fillText('纬向 ↑',w-14,21);c.textAlign='left';const length=step*this.scale;c.fillStyle='#11171de6';c.fillRect(8,h-38,length+35,32);c.strokeStyle='#93a5b4';c.beginPath();c.moveTo(18,h-15);c.lineTo(18+length,h-15);c.stroke();c.fillStyle='#93a5b4';c.fillText(`约 ${step<1?step.toFixed(2):Math.round(step)} m`,18,h-23);this.drawCursor();
+  }
+  axisValue(point){return this.axis==='distance'?point.distance_m:point.time_s;}
+  pointAt(points,value){if(!finite(value))return null;for(let i=0;i<points.length;i++){const point=points[i],x=this.axisValue(point);if(!valid(point)||!finite(x))continue;if(Math.abs(x-value)<1e-8)return point;const prior=points[i-1];if(!valid(prior)||point.break_before)continue;const previousX=this.axisValue(prior);if(!finite(previousX)||x<=previousX||value<previousX||value>x)continue;const fraction=(value-previousX)/(x-previousX);return {x_m:prior.x_m+(point.x_m-prior.x_m)*fraction,y_m:prior.y_m+(point.y_m-prior.y_m)*fraction};}return null;}
+  setCursor(value){this.cursor=value;if(this.follow.checked&&finite(value)&&this.hasData){const point=this.pointAt(this.lines[0]||[],value)||this.pointAt(this.lines[1]||[],value);if(point){this.center=[point.x_m,point.y_m];this.scale=Math.max(this.fitScale,Math.min(this.fitScale*256,3));this.manuallyMoved=true;this.draw();return;}}this.drawCursor();}
+  drawCursor(){const {c}=this.context(this.overlay);const labels=[];this.lines?.forEach((points,index)=>{const point=this.pointAt(points,this.cursor);if(!point){if(this.traces[index])labels.push(`${index?'参考':'当前'}无定位`);return;}const [x,y]=this.screen(point);c.beginPath();c.arc(x,y,index?5:7,0,Math.PI*2);c.fillStyle=index?'#11171d':COLORS[index];c.fill();c.strokeStyle=COLORS[index];c.lineWidth=2;c.stroke();labels.push(`${index?'参考':'当前'}第 ${this.traces[index].ordinal} 圈`);});this.position.textContent=finite(this.cursor)?`${this.axis==='distance'?this.cursor.toFixed(1)+' m':this.cursor.toFixed(3)+' s'} · ${labels.join(' / ')}`:'悬停走线或驾驶曲线，查看同位置标记';}
+  pick(mouse){if(!this.hasData)return;let nearest=144,selected=null;this.lines.forEach(points=>{for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];if(!valid(a)||!valid(b)||b.break_before)continue;const av=this.axisValue(a),bv=this.axisValue(b);if(!finite(av)||!finite(bv)||bv<=av)continue;const [ax,ay]=this.screen(a),[bx,by]=this.screen(b);const dx=bx-ax,dy=by-ay;const length=dx*dx+dy*dy;if(!length)continue;const f=Math.max(0,Math.min(1,((mouse[0]-ax)*dx+(mouse[1]-ay)*dy)/length));const d=(ax+dx*f-mouse[0])**2+(ay+dy*f-mouse[1])**2;if(d<nearest){nearest=d;selected=av+(bv-av)*f;}}});if(selected!==null)this.onCursor?.(selected);}
+}

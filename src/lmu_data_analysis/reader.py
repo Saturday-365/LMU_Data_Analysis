@@ -237,7 +237,27 @@ def _read(connection, path: Path, before: str) -> Recording:
             timing_events[name] = rows
         except TelemetryError as error:
             diagnostics.append(Diagnostic("sector_event_unusable", str(error), name))
-    return Recording(path.name, before, metadata, clock, catalog, series, segments, diagnostics, checks, timing_events)
+    position_series = {}
+    for key, name in (("latitude", "GPS Latitude"), ("longitude", "GPS Longitude")):
+        if name not in frequencies or not has(name, ['value']):
+            continue
+        frequency, unit = frequencies[name]
+        if unit != 'deg' or not isinstance(frequency, int) or frequency <= 0 or clock_frequency % frequency:
+            diagnostics.append(Diagnostic('position_unusable', 'GPS unit or sample frequency unsupported', name))
+            continue
+        try:
+            values = ordered_values(connection, name)
+        except TelemetryError as error:
+            diagnostics.append(Diagnostic('position_unusable', str(error), name))
+            continue
+        times = clock[::clock_frequency // frequency]
+        if len(values) != len(times):
+            diagnostics.append(Diagnostic('position_unusable', 'GPS sample count disagrees with recording clock', name))
+            continue
+        position_series[key] = Series(key, name, unit, 'continuous', times,
+                                       [numeric(value) for value in values], frequency,
+                                       'reconstructed_gps_stride', False)
+    return Recording(path.name, before, metadata, clock, catalog, series, segments, diagnostics, checks, timing_events, position_series)
 
 
 def read_recording(source: str | Path) -> Recording:

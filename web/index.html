@@ -4,6 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>LMU · 遥测工作台</title>
   <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/assets/trajectory.css">
   <script type="module" src="/assets/app.js"></script>
 </head>
 <body>
@@ -26,9 +27,16 @@
       <div class="metrics"><div><span>最短记录圈</span><strong id="best-lap">—</strong><small>完整圈 · 有效性未核实</small></div><div><span>完整圈数</span><strong id="lap-count">—</strong><small id="fragment-count">—</small></div><div><span>录制时长</span><strong id="duration">—</strong><small id="recorded-date">—</small></div></div>
       <div class="analysis-header"><div><h2>驾驶数据</h2><span id="selection-note">选择圈次进行分析</span></div><div class="legend"><span class="main-dot"></span> 当前圈 <span class="ref-dot"></span> 参考圈</div></div>
       <div class="controls"><label><span>当前圈</span><select id="lap-select" aria-label="当前圈"></select></label><label><span>参考圈</span><select id="reference-select" aria-label="参考圈"></select></label><div class="axis-switch" role="group" aria-label="横轴"><button id="axis-distance" aria-pressed="true">距离</button><button id="axis-time" aria-pressed="false">时间</button></div><button id="reset-zoom" class="quiet">重置视图 ↺</button></div>
+      <div class="driving-layout"><div class="chart-stack">
       <div class="chart-toolbar"><span id="cursor-position">移动鼠标查看数据</span><span>滚轮缩放 · 拖动平移 · 双击重置</span></div>
       <div id="charts" class="charts" tabindex="0" role="group" aria-label="联动遥测曲线，左右方向键移动游标"></div>
       <div class="chart-footnote"><span id="axis-note">—</span><span>转向单位为 %，非方向盘角度</span></div>
+      </div><section class="trajectory-panel" aria-label="走线对比">
+        <div class="trajectory-heading"><h2>走线对比</h2><div class="legend"><span class="main-dot"></span> 当前 <span class="ref-dot"></span> 参考</div></div>
+        <div class="trajectory-controls"><label><input type="checkbox" id="trajectory-follow"> 跟随游标看弯道</label><div><button id="trajectory-minus" aria-label="缩小走线">−</button><button id="trajectory-plus" aria-label="放大走线">＋</button><button id="trajectory-fit" aria-label="显示全圈走线">全圈</button></div></div>
+        <div id="trajectory-map" class="trajectory-map" tabindex="0" role="group" aria-label="走线地图，可悬停联动曲线，滚轮缩放、拖动平移；方向键平移，加减键缩放，0 恢复全圈"><canvas></canvas><canvas></canvas></div>
+        <p id="trajectory-position" class="trajectory-position" aria-live="off"></p><p id="trajectory-status" class="trajectory-status" role="status"></p><p class="trajectory-help">悬停联动 · 滚轮缩放 · 拖动平移<br>局部轨迹；细微走线差异受坐标精度限制。</p>
+      </section></div>
       <details class="data-details"><summary>数据说明与读取状态 <span id="diagnostic-count"></span></summary><p>连续通道时间轴由 GPS 时钟与采样频率重建；游标会注明原始采样、插值或保持。缺失数据保留为空，挡位按事件保持。当前版本不判断圈次的官方有效性。</p><p id="source-file"></p><ul id="diagnostics"></ul></details>
       </section>
       <section id="view-timing" hidden aria-label="圈速总览">
