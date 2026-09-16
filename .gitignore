@@ -1,0 +1,54 @@
+# Local telemetry and working outputs
+/samples/local/*
+!/samples/local/.gitkeep
+/outputs/
+/logs/
+*.duckdb
+*.duckdb.wal
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.csv
+*.parquet
+*.ld
+*.ldx
+*.log
+
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+.codex/
+.agents/
+.local-tools/
+
+# Python (candidate stack)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# UI tooling (not selected yet)
+node_modules/
+
+# Editor and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+*.bak
