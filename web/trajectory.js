@@ -3,6 +3,14 @@ const valid = point => point && finite(point.x_m) && finite(point.y_m);
 const COLORS = ['#ff804d','#6ecbd5'];
 
 export class TrajectoryMap {
+  setReference(reference){this.reference=reference;this.enabledLayers=new Set((reference?.layers||[]).map(l=>l.kind));this.draw();}
+  toggleLayer(kind,enabled){if(enabled)this.enabledLayers.add(kind);else this.enabledLayers.delete(kind);this.draw();}
+  drawReference(c){const ref=this.reference;if(!ref?.available)return;const frame=this.traces.find(t=>t.trajectory?.available)?.trajectory.frame;if(frame?.projection!==ref.frame.projection||JSON.stringify(frame?.origin_deg)!==JSON.stringify(ref.frame.origin_deg))return;
+    const colors={centerline:'#637b83',left_boundary:'#b9c3c7',right_boundary:'#b9c3c7',kerb:'#c69a93',pit_lane:'#6a7e95'};
+    for(const layer of ref.layers){if(!this.enabledLayers.has(layer.kind))continue;c.strokeStyle=colors[layer.kind];c.lineWidth=layer.kind==='kerb'?3:1.2;c.setLineDash(layer.kind==='centerline'?[4,5]:[]);
+      for(const points of layer.paths){c.beginPath();let connected=false;for(const p of points){if(!valid(p)){connected=false;continue;}const [x,y]=this.screen(p);if(connected)c.lineTo(x,y);else c.moveTo(x,y);connected=true;}c.stroke();}}
+    c.setLineDash([]);
+  }
   constructor(root, status, position, follow) {
     this.root=root; this.status=status; this.position=position; this.follow=follow;
     this.base=root.querySelector('canvas'); this.overlay=root.querySelectorAll('canvas')[1];
@@ -34,6 +42,7 @@ export class TrajectoryMap {
   context(canvas){const ratio=window.devicePixelRatio||1,w=Math.max(1,this.root.clientWidth),h=Math.max(1,this.root.clientHeight);if(canvas.width!==Math.round(w*ratio)||canvas.height!==Math.round(h*ratio)){canvas.width=Math.round(w*ratio);canvas.height=Math.round(h*ratio);}const c=canvas.getContext('2d');c.setTransform(ratio,0,0,ratio,0,0);c.clearRect(0,0,w,h);return {c,w,h};}
   draw(){const {c,w,h}=this.context(this.base);if(!this.hasData){c.fillStyle='#82909c';c.font='12px Segoe UI';c.textAlign='center';c.fillText('暂无可用走线',w/2,h/2);this.drawCursor();return;}
     c.lineWidth=1;c.strokeStyle='#252d34';const worldStep=10**Math.floor(Math.log10(70/this.scale));const step=worldStep*[1,2,5,10].find(v=>v*worldStep*this.scale>=45);const topLeft=this.world([0,0]),bottomRight=this.world([w,h]);c.beginPath();for(let x=Math.ceil(topLeft[0]/step)*step;x<=bottomRight[0];x+=step){const sx=this.screen({x_m:x,y_m:0})[0];c.moveTo(sx,0);c.lineTo(sx,h);}for(let y=Math.ceil(bottomRight[1]/step)*step;y<=topLeft[1];y+=step){const sy=this.screen({x_m:0,y_m:y})[1];c.moveTo(0,sy);c.lineTo(w,sy);}c.stroke();
+    this.drawReference(c);
     this.lines.forEach((points,index)=>{c.strokeStyle=COLORS[index];c.lineWidth=index?1.5:1.8;c.setLineDash(index?[5,3]:[]);c.beginPath();let connected=false;for(const point of points){if(!valid(point)){connected=false;continue;}const [x,y]=this.screen(point);if(!connected||point.break_before)c.moveTo(x,y);else c.lineTo(x,y);connected=true;}c.stroke();c.setLineDash([]);const first=points.find(valid);if(first){const [x,y]=this.screen(first);c.fillStyle=COLORS[index];c.fillRect(x-3,y-3,6,6);if(index===0){c.font='10px Segoe UI';c.fillText('圈首',x+8,y-7);}}});
     c.font='10px Segoe UI';c.fillStyle='#82929f';c.textAlign='right';c.fillText('纬向 ↑',w-14,21);c.textAlign='left';const length=step*this.scale;c.fillStyle='#11171de6';c.fillRect(8,h-38,length+35,32);c.strokeStyle='#93a5b4';c.beginPath();c.moveTo(18,h-15);c.lineTo(18+length,h-15);c.stroke();c.fillStyle='#93a5b4';c.fillText(`约 ${step<1?step.toFixed(2):Math.round(step)} m`,18,h-23);this.drawCursor();
   }

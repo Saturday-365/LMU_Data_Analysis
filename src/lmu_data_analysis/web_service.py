@@ -12,14 +12,44 @@ from .storage import BlobStore, SessionRepository
 from .timing import timing_summary
 from .inventory import inspect_channels
 from .trajectory import lap_trajectory
+from .conditions import extract_context, context_document, validate_changes
+from .track_reference import load_reference
 
 
 class TelemetryService:
-    def __init__(self, repository: SessionRepository, blobs: BlobStore):
+    def __init__(self, repository: SessionRepository, blobs: BlobStore, track_root=None):
         self.repository = repository
         self.blobs = blobs
         self.lock = RLock()
         self.cache = OrderedDict()
+        self.context_cache = OrderedDict()
+        self.track_root = track_root
+
+    def conditions(self, driver_id, session_id, lap_id=None):
+        with self.lock:
+            session, recording = self._recording(driver_id, session_id)
+            key = (driver_id, session_id)
+            if key not in self.context_cache:
+                with self.blobs.materialize(session['blob_key']) as path:
+                    self.context_cache[key] = extract_context(path, recording)
+                while len(self.context_cache) > 2:
+                    self.context_cache.popitem(last=False)
+            self.context_cache.move_to_end(key)
+            return context_document(session, recording, self.context_cache[key],
+                                    self.repository.get_annotations(driver_id, session_id), lap_id)
+
+    def update_conditions(self, driver_id, session_id, payload, lap_id=None):
+        with self.lock:
+            # Resolve source and lap before mutating; an unreadable source must not produce a partial save.
+            self.conditions(driver_id, session_id, lap_id)
+            changes = validate_changes(payload, lap_id or 'session')
+            self.repository.write_annotations(driver_id, session_id, lap_id or 'session', changes)
+            return self.conditions(driver_id, session_id, lap_id)
+
+    def track_reference(self, driver_id, session_id):
+        with self.lock:
+            session, recording = self._recording(driver_id, session_id)
+            return load_reference(self.track_root, self.repository.track_reference_key(driver_id, session_id), recording)
 
     def _recording(self, driver_id, session_id):
         session = self.repository.get_session(driver_id, session_id)

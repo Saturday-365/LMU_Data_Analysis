@@ -5,12 +5,13 @@
   <title>LMU · 遥测工作台</title>
   <link rel="stylesheet" href="/assets/style.css">
   <link rel="stylesheet" href="/assets/trajectory.css">
+  <link rel="stylesheet" href="/assets/conditions.css">
   <script type="module" src="/assets/app.js"></script>
 </head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="LMU 遥测工作台首页"><span class="brand-mark">L/</span><span>LMU<span class="brand-sub">TELEMETRY WORKSPACE</span></span></a>
-    <div class="workspace-label"><span class="status-dot"></span> 本地工作空间 <span class="version">V0.1</span></div>
+    <div class="workspace-label"><span class="status-dot"></span> 本地工作空间 <span class="version">V0.2</span></div>
     <label id="dropzone" class="import-box" for="file-input"><span class="import-icon">＋</span><strong>导入遥测文件</strong><span>点击选择或拖入 .duckdb</span><small>文件保存在本机 · 最大 128 MB</small></label>
     <input id="file-input" class="sr-only" type="file" accept=".duckdb" aria-label="选择遥测文件">
     <div class="section-label">练习记录 <span id="session-count">0</span></div>
@@ -22,11 +23,13 @@
     <section id="empty" class="empty-state"><span class="eyebrow">YOUR NEXT LAP STARTS HERE</span><h1>读懂每一次驾驶。</h1><p>导入 LMU 原生遥测，查看驾驶曲线，<br>把两圈放在同一坐标下逐段对比。</p><button id="empty-import" class="primary">导入第一份遥测 <span>↗</span></button><div class="empty-channels">速度 <span>·</span> 刹车 <span>·</span> 油门 <span>·</span> 转向 <span>·</span> 挡位</div></section>
     <section id="workspace" hidden>
       <div class="session-heading"><div><span class="eyebrow">SESSION OVERVIEW</span><h1 id="track-name">—</h1><p id="car-name"></p></div><span id="session-type" class="outline-badge">练习</span></div>
-      <nav class="view-navigation" aria-label="分析视图"><button data-view="telemetry" aria-pressed="true">驾驶曲线</button><button data-view="timing" aria-pressed="false">圈速总览</button><button data-view="inventory" aria-pressed="false">数据目录</button></nav>
+      <p id="condition-summary" class="condition-summary"></p>
+      <nav class="view-navigation" aria-label="分析视图"><button data-view="telemetry" aria-pressed="true">驾驶曲线</button><button data-view="timing" aria-pressed="false">圈速总览</button><button data-view="inventory" aria-pressed="false">数据目录</button><button data-view="conditions" aria-pressed="false">练习信息</button></nav>
       <section id="view-telemetry">
       <div class="metrics"><div><span>最短记录圈</span><strong id="best-lap">—</strong><small>完整圈 · 有效性未核实</small></div><div><span>完整圈数</span><strong id="lap-count">—</strong><small id="fragment-count">—</small></div><div><span>录制时长</span><strong id="duration">—</strong><small id="recorded-date">—</small></div></div>
       <div class="analysis-header"><div><h2>驾驶数据</h2><span id="selection-note">选择圈次进行分析</span></div><div class="legend"><span class="main-dot"></span> 当前圈 <span class="ref-dot"></span> 参考圈</div></div>
       <div class="controls"><label><span>当前圈</span><select id="lap-select" aria-label="当前圈"></select></label><label><span>参考圈</span><select id="reference-select" aria-label="参考圈"></select></label><div class="axis-switch" role="group" aria-label="横轴"><button id="axis-distance" aria-pressed="true">距离</button><button id="axis-time" aria-pressed="false">时间</button></div><button id="reset-zoom" class="quiet">重置视图 ↺</button></div>
+      <div id="lap-conditions" class="lap-conditions" aria-live="polite"></div>
       <div class="driving-layout"><div class="chart-stack">
       <div class="chart-toolbar"><span id="cursor-position">移动鼠标查看数据</span><span>滚轮缩放 · 拖动平移 · 双击重置</span></div>
       <div id="charts" class="charts" tabindex="0" role="group" aria-label="联动遥测曲线，左右方向键移动游标"></div>
@@ -34,10 +37,23 @@
       </div><section class="trajectory-panel" aria-label="走线对比">
         <div class="trajectory-heading"><h2>走线对比</h2><div class="legend"><span class="main-dot"></span> 当前 <span class="ref-dot"></span> 参考</div></div>
         <div class="trajectory-controls"><label><input type="checkbox" id="trajectory-follow"> 跟随游标看弯道</label><div><button id="trajectory-minus" aria-label="缩小走线">−</button><button id="trajectory-plus" aria-label="放大走线">＋</button><button id="trajectory-fit" aria-label="显示全圈走线">全圈</button></div></div>
+        <div id="track-layers" class="track-layers"></div><p id="track-reference-status" class="track-reference-status" role="status"></p>
         <div id="trajectory-map" class="trajectory-map" tabindex="0" role="group" aria-label="走线地图，可悬停联动曲线，滚轮缩放、拖动平移；方向键平移，加减键缩放，0 恢复全圈"><canvas></canvas><canvas></canvas></div>
         <p id="trajectory-position" class="trajectory-position" aria-live="off"></p><p id="trajectory-status" class="trajectory-status" role="status"></p><p class="trajectory-help">悬停联动 · 滚轮缩放 · 拖动平移<br>局部轨迹；细微走线差异受坐标精度限制。</p>
       </section></div>
       <details class="data-details"><summary>数据说明与读取状态 <span id="diagnostic-count"></span></summary><p>连续通道时间轴由 GPS 时钟与采样频率重建；游标会注明原始采样、插值或保持。缺失数据保留为空，挡位按事件保持。当前版本不判断圈次的官方有效性。</p><p id="source-file"></p><ul id="diagnostics"></ul></details>
+      </section>
+      <section id="view-conditions" hidden aria-label="练习信息">
+        <h2>练习信息</h2><p class="condition-notes">先选择适用范围，再编辑一个字段。自动读取与用户填写分别保留；圈次补录优先于整场补录。</p>
+        <div class="condition-toolbar"><label for="condition-scope">适用范围</label><select id="condition-scope"></select><span id="condition-status" role="status"></span></div>
+        <form id="condition-form" class="condition-form" hidden>
+          <label>信息字段<select id="condition-field"></select></label>
+          <label>记录状态<select id="condition-state"><option value="known">已知</option><option value="unknown">未知</option><option value="not_recorded">未记录</option><option value="not_applicable">不适用</option></select></label>
+          <label>填写内容 <span id="condition-unit"></span><textarea id="condition-value" maxlength="2000"></textarea><select id="condition-choice" hidden></select></label>
+          <button id="condition-save" class="primary" type="submit">保存此字段</button><button id="condition-restore" class="quiet" type="button">恢复自动 / 继承值</button>
+          <p id="condition-original"></p>
+        </form>
+        <div id="condition-cards" class="condition-cards"></div><p id="condition-notes" class="condition-notes"></p>
       </section>
       <section id="view-timing" hidden aria-label="圈速总览">
         <p id="timing-status" class="view-status" role="status"></p>

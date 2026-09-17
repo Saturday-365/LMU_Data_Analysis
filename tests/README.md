@@ -8,7 +8,7 @@
 - 不同采样频率、缺失区间及离散通道的处理。
 - 圈内插值、挡位事件保持、首尾缺值、输出覆盖保护及身份元数据排除。
 
-先安装 `requirements-dev.txt`，再运行 `python -m unittest discover -s tests -v`。默认执行 45 项合成 / 接口检查，并跳过 3 项真实样本检查；设置 `LMU_SAMPLE_PATH` 为已核实的 Monza 文件后共执行 48 项。
+先安装 `requirements-dev.txt`，再运行 `python -m unittest discover -s tests -v`。默认执行 52 项合成 / 接口检查，并跳过 4 项真实样本检查；设置 `LMU_SAMPLE_PATH` 为已核实的 Monza 文件后共执行 56 项。
 
 `test_trajectory.py` 验证固定坐标原点、圈间偏移不被抹平、投影尺度、经度换日线、GPS 配对、缺失 / 跳变断线、圈界及距离缺失回退，真实样本核验轨迹长度和投影速度。API 检查还验证 GPS 错误单位不阻碍原有驾驶曲线。
 

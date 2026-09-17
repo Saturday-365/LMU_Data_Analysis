@@ -1,6 +1,6 @@
 """Persistence ports and local adapters. IDs, ownership and blobs are separate."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -10,6 +10,9 @@ from uuid import UUID, uuid4
 
 
 class SessionRepository(Protocol):
+    def get_annotations(self, driver_id: str, session_id: str) -> list[dict]: ...
+    def write_annotations(self, driver_id: str, session_id: str, scope: str, changes: dict) -> None: ...
+    def track_reference_key(self, driver_id: str, session_id: str) -> str | None: ...
     def ensure_driver(self, driver_id: str, name: str) -> dict: ...
     def list_sessions(self, driver_id: str) -> list[dict]: ...
     def get_session(self, driver_id: str, session_id: str) -> dict | None: ...
@@ -56,7 +59,7 @@ class SQLiteSessionRepository:
         self.path = path
         with self.connection() as c:
             version = c.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise RuntimeError(f"Unsupported catalog schema version {version}")
             if version == 0:
                 c.executescript("""
@@ -74,6 +77,20 @@ class SQLiteSessionRepository:
                         UNIQUE(session_id,ordinal));
                     PRAGMA user_version=1;
                 """)
+            if version < 2:
+                if version == 1:
+                    # SQLite's backup API includes committed WAL data. Never overwrite an earlier backup.
+                    backup = path.with_name(path.name + '.pre-v2-' + uuid4().hex + '.bak')
+                    with closing(sqlite3.connect(backup)) as destination:
+                        c.backup(destination)
+                # Explicit transaction: executescript would commit before running its statements.
+                c.execute('BEGIN IMMEDIATE')
+                c.execute('CREATE TABLE annotations(session_id TEXT NOT NULL REFERENCES sessions(id), '
+                          'scope TEXT NOT NULL, field TEXT NOT NULL, value_json TEXT NOT NULL, '
+                          'updated_at TEXT NOT NULL, PRIMARY KEY(session_id,scope,field))')
+                c.execute('CREATE TABLE track_references(session_id TEXT PRIMARY KEY REFERENCES sessions(id), '
+                          'resource_key TEXT NOT NULL)')
+                c.execute('PRAGMA user_version=2')
 
     @contextmanager
     def connection(self):
@@ -90,6 +107,37 @@ class SQLiteSessionRepository:
         with self.connection() as c:
             c.execute("INSERT OR IGNORE INTO drivers VALUES (?,?)", (driver_id, name))
             return dict(c.execute("SELECT * FROM drivers WHERE id=?", (driver_id,)).fetchone())
+
+    def get_annotations(self, driver_id, session_id):
+        if self.get_session(driver_id, session_id) is None:
+            raise LookupError('练习记录不存在')
+        with self.connection() as c:
+            return [{**dict(row), 'data': json.loads(row['value_json'])} for row in c.execute(
+                'SELECT * FROM annotations WHERE session_id=?', (session_id,))]
+
+    def write_annotations(self, driver_id, session_id, scope, changes):
+        session = self.get_session(driver_id, session_id)
+        if session is None:
+            raise LookupError('练习记录不存在')
+        if scope != 'session' and scope not in {lap['id'] for lap in session['laps']}:
+            raise LookupError('圈次不存在')
+        with self.connection() as c:
+            for field, data in changes.items():
+                if data is None:
+                    c.execute('DELETE FROM annotations WHERE session_id=? AND scope=? AND field=?',
+                              (session_id, scope, field))
+                else:
+                    c.execute('INSERT INTO annotations VALUES (?,?,?,?,?) ON CONFLICT(session_id,scope,field) '
+                              'DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at',
+                              (session_id, scope, field, json.dumps(data, ensure_ascii=False),
+                               datetime.now(timezone.utc).isoformat()))
+
+    def track_reference_key(self, driver_id, session_id):
+        if self.get_session(driver_id, session_id) is None:
+            raise LookupError('练习记录不存在')
+        with self.connection() as c:
+            row = c.execute('SELECT resource_key FROM track_references WHERE session_id=?', (session_id,)).fetchone()
+            return row[0] if row else None
 
     @staticmethod
     def _decode(row):

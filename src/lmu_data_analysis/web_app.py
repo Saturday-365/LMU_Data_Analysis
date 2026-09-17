@@ -1,6 +1,7 @@
 """Local-only HTTP adapter. Replace identity and persistence before cloud deployment."""
 
 from pathlib import Path, PureWindowsPath
+import sqlite3
 from typing import Protocol
 from urllib.parse import unquote, urlsplit
 
@@ -33,8 +34,8 @@ def create_app(data_dir=None, *, identity=None, repository=None, blobs=None, max
     repository = repository or SQLiteSessionRepository(directory / "catalog.sqlite3")
     blobs = blobs or LocalBlobStore(directory / "recordings")
     identity = identity or LocalIdentity()
-    service = TelemetryService(repository, blobs)
-    app = FastAPI(title="LMU Data Analysis", version="0.1.0-local", docs_url=None, redoc_url=None)
+    service = TelemetryService(repository, blobs, directory / 'track-resources')
+    app = FastAPI(title="LMU Data Analysis", version="0.2.0-local", docs_url=None, redoc_url=None)
     app.state.service = service
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -133,6 +134,44 @@ def create_app(data_dir=None, *, identity=None, repository=None, blobs=None, max
             raise HTTPException(404, str(error)) from error
         except (TelemetryError, OSError) as error:
             raise HTTPException(422, "无法读取数据目录，请检查原始文件") from error
+
+    @app.get('/api/v1/sessions/{session_id}/conditions')
+    def conditions(session_id: str, request: Request, lap_id: str | None = None):
+        try:
+            return service.conditions(driver(request)['id'], session_id, lap_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        except (TelemetryError, OSError) as error:
+            raise HTTPException(422, '无法读取练习信息') from error
+
+    @app.patch('/api/v1/sessions/{session_id}/conditions')
+    async def edit_conditions(session_id: str, request: Request, lap_id: str | None = None):
+        try:
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > 128*1024:
+                    raise HTTPException(413, '练习信息过大')
+            import json
+            payload = json.loads(body)
+            return await run_in_threadpool(service.update_conditions, driver(request)['id'], session_id, payload, lap_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        except TelemetryError as error:
+            raise HTTPException(422, '无法读取练习信息') from error
+        except (ValueError, UnicodeError) as error:
+            raise HTTPException(422, str(error)) from error
+        except (OSError, sqlite3.Error) as error:
+            raise HTTPException(500, '保存失败，请检查本地存储；原始遥测未修改') from error
+
+    @app.get('/api/v1/sessions/{session_id}/track-reference')
+    def track_reference(session_id: str, request: Request):
+        try:
+            return service.track_reference(driver(request)['id'], session_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        except (TelemetryError, OSError) as error:
+            raise HTTPException(422, '无法读取赛道参照') from error
 
     web_root = ROOT / "web"
     app.mount("/assets", StaticFiles(directory=web_root), name="assets")
