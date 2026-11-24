@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 const dateFormat = new Intl.DateTimeFormat('zh-CN', {dateStyle:'short', timeStyle:'short'});
 const dayFormat = new Intl.DateTimeFormat('zh-CN', {month:'numeric', day:'numeric'});
+const archiveModes = ['overview', 'detail', 'growth'];
 
 export function lapTime(seconds){
   if(seconds == null) return '—';
@@ -22,7 +23,7 @@ function dateValue(value){
 }
 
 export function timestamp(session){return dateValue(session.metadata.RecordingTime);}
-function norm(value){return (value || '').trim().toLowerCase();}
+export function norm(value){return (value || '').trim().toLowerCase();}
 export function layoutKey(meta){
   if(!norm(meta.TrackName) || !norm(meta.TrackLayout)) return null;
   return JSON.stringify([norm(meta.TrackName), norm(meta.TrackLayout)]);
@@ -39,13 +40,13 @@ export function vehicleName(session){
 }
 function brandKey(session){return norm(session.vehicle_brand);}
 function classKey(session){return norm(session.metadata.CarClass);}
-function vehicleKey(session){
+export function vehicleKey(session){
   const category = norm(session.metadata.CarClass);
   if(session.vehicle_model) return JSON.stringify(['model', norm(session.vehicle_model), category]);
   if(session.metadata.CarName) return JSON.stringify(['entry', norm(session.metadata.CarName), category]);
   return session.id;
 }
-function typeKey(session){
+export function typeKey(session){
   const kind=norm(session.metadata.SessionType);
   return kind==='qualifying'?'qualify':kind || session.id;
 }
@@ -63,8 +64,9 @@ function options(select, sessions, key, label, desired){
 }
 
 export class PaceArchive {
-  constructor(onOpen){
+  constructor(onOpen, growth){
     this.onOpen = onOpen;
+    this.growth = growth;
     this.sessions = [];
     this.visible = [];
     this.mode = 'overview';
@@ -74,8 +76,7 @@ export class PaceArchive {
     this.type = $('archive-type');
     this.canvas = $('pace-trend');
     for(const input of [this.layout, this.car, this.category, this.type]) input.addEventListener('change', () => this.render());
-    $('archive-show-overview').onclick = () => this.show('overview');
-    $('archive-show-detail').onclick = () => this.show('detail');
+    for(const mode of archiveModes) $('archive-show-' + mode).onclick = () => this.show(mode);
     new ResizeObserver(() => this.draw()).observe(this.canvas);
   }
 
@@ -83,15 +84,18 @@ export class PaceArchive {
     this.sessions = [...sessions].sort((a,b) => (timestamp(b) ?? -Infinity) - (timestamp(a) ?? -Infinity)
       || b.created_at.localeCompare(a.created_at));
     this.render();
+    this.growth.setSessions(this.sessions);
+    if(this.mode === 'growth') this.growth.render();
   }
 
   show(mode,session){
     this.mode = mode;
-    for(const name of ['overview','detail']){
+    for(const name of archiveModes){
       $(`archive-${name}`).hidden = name !== mode;
       $(`archive-show-${name}`).setAttribute('aria-pressed', String(name === mode));
     }
     if(mode === 'detail') this.render(session);
+    if(mode === 'growth') this.growth.render();
   }
 
   render(anchor){

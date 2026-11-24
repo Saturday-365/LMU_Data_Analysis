@@ -6,6 +6,7 @@ import {SessionPace} from './pace.js';
 import {CircuitOverview} from './overview.js';
 import {IntervalReview} from './intervals.js';
 import {ImportSettings} from './import-settings.js';
+import {DriverGrowth} from './growth.js';
 import {PaceArchive, dateLabel, lapTime, layoutKey, sameGroup, trackName, typeLabel, vehicleName} from './archive.js';
 
 const $ = id => document.getElementById(id);
@@ -31,7 +32,7 @@ const charts = new TelemetryCharts($('charts'), $('cursor-position'));
 const trajectory = new TrajectoryMap($('trajectory-map'), $('trajectory-status'), $('trajectory-position'), $('trajectory-follow'));
 const insights = new SessionInsights(api, new SessionPace(api, selectSession));
 const conditions = new PracticeConditions(api, notice, trajectory, () => refreshSessions().catch(error => notice(error.message, true)));
-const archive = new PaceArchive(selectSession);
+const archive = new PaceArchive(selectSession, new DriverGrowth(selectSession));
 const overview = new CircuitOverview(api,selectSession,session => archive.show('detail',session));
 const settings = new ImportSettings(api, () => refreshSessions().catch(error => notice(error.message, true)));
 const intervals = new IntervalReview(api, focusInterval, value => charts.setCursor(value), {

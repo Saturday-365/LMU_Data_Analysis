@@ -14,7 +14,7 @@
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
-node --test tests/test_interval_metrics.mjs
+node --test tests/test_interval_metrics.mjs tests/test_growth.mjs
 ```
 
 设置 `LMU_SAMPLE_PATH` 为已核实的 Monza 文件绝对路径，可额外执行真实样本检查。其余检查使用合成数据。
@@ -26,3 +26,5 @@ node --test tests/test_interval_metrics.mjs
 `test_web.py` 验证导入、稳定编号、重启恢复、去重、非法输入、文件路径隔离、写入失败回滚和跨车手隔离（包括缓存）。测试数据生成于项目 outputs 临时子目录，不提交真实遥测，不硬编码个人电脑绝对路径。浏览器人工检查记录见 [网页使用说明](../docs/web-usage.md)。
 
 `test_auto_import.py` 验证目录设置、启动扫描、按更新时间导入、跨重启跳过未变更文件及等待读写结束后的重试。
+
+`test_growth.mjs` 验证成长页按录制时间排序，隔离不同车辆和赛道布局，以及正确处理单场基准、同一时刻和毫秒级并列圈速。

@@ -1,0 +1,119 @@
+.growth-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 24px 0 16px;
+}
+.growth-header > div { min-width: 0; }
+.growth-header h2 { font-size: 22px; font-weight: 650; }
+.growth-header p { margin: 6px 0 0; }
+.growth-header label, .growth-selection label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.growth-header select { min-width: 0; max-width: min(470px, 53vw); }
+.growth-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.growth-metric {
+  min-width: 0;
+  padding: 15px 17px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--surface-radius);
+  background: var(--panel);
+}
+.growth-metric:first-child { border-color: var(--accent-border); background: var(--accent-surface); }
+.growth-metric dt, .growth-metric .growth-change { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.growth-metric dd { margin: 7px 0 5px; font: 600 29px Bahnschrift, monospace; }
+.growth-metric .growth-change { margin: 0; font-family: inherit; font-weight: 400; }
+.growth-metric:first-child dd:not(.growth-change) { color: var(--action); }
+.growth-change[data-improved="true"] { color: #9fe0be; }
+.growth-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 2.3fr) minmax(260px, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+.growth-panels .archive-panel { margin-bottom: 12px; }
+.growth-panels h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.growth-legend { display: flex; flex-wrap: wrap; gap: 8px 13px; color: var(--muted); font-size: 11px; }
+.growth-legend span::before {
+  content: "";
+  display: inline-block;
+  vertical-align: middle;
+  width: 12px;
+  margin-inline-end: 5px;
+  border-top: 2px solid var(--action);
+}
+.growth-legend span:nth-child(2)::before { border-color: #80ced9; }
+.growth-legend span:nth-child(3)::before { border-top: 2px dashed #9fe0be; }
+#growth-chart { display: block; width: 100%; height: 238px; cursor: crosshair; }
+.growth-chart-note { margin: 5px 0 10px; }
+.growth-selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.growth-selection select { min-width: 0; max-width: 220px; }
+.growth-selection p { flex: 1 0 100%; margin: 0; }
+.growth-milestones .archive-panel-heading span { color: #a8cbbc; font-size: 11px; }
+.growth-milestones ol {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  max-height: 360px;
+  overflow: auto;
+}
+.growth-milestone {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #1b2327;
+}
+.growth-milestone:first-child { border-color: #496557; background: #1c2a25; }
+.growth-milestone-icon {
+  display: grid;
+  place-items: center;
+  width: 31px;
+  height: 31px;
+  border: 1px solid #50665a;
+  border-radius: 7px;
+  color: #afdcbd;
+  background: #25352e;
+}
+.growth-milestone h4 { margin: 0; color: var(--text); font-size: 12px; }
+.growth-milestone p { margin: 5px 0 3px; font: 600 18px Bahnschrift, monospace; }
+.growth-milestone p span { margin-inline-start: 8px; color: #9fe0be; font: 500 11px "Segoe UI", sans-serif; }
+.growth-milestone time { display: block; color: var(--muted); font-size: 11px; }
+.growth-milestone button { margin-top: 5px; font-size: 11px; }
+.growth-method { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.growth-method summary { cursor: pointer; }
+.growth-method p { margin: 5px 0; }
+@media (max-width: 1120px) {
+  .growth-panels { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .growth-milestones ol { grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); }
+}
+@media (max-width: 640px) {
+  .growth-header label { width: 100%; }
+  .growth-header select { flex: 1; max-width: none; }
+  .growth-metrics { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+}
