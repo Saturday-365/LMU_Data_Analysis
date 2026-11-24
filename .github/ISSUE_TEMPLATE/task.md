@@ -1,22 +1,23 @@
 ---
-name: 开发任务
-about: 拆分 V0.1 解析与展示工作
+name: Suggest a feature / 功能建议
+about: Propose an improvement to the app, import workflow, or documentation / 建议功能、导入流程或文档改进
 title: "[Task] "
 ---
 
-## 目标
+## Goal / 目标
 
-说明对应的 V0.1 功能。
+Describe the problem you want to solve and how you use the app today.
 
-## 输入与输出
+说明你想解决的问题和当前的使用方式。
 
-说明所需数据、预期结果及依赖；不要上传私有遥测或个人信息。
+## Proposed behavior / 预期行为
 
-## 验收标准
+Describe the desired result and the data or settings it depends on.
 
-- [ ] 用户可观察的结果
-- [ ] 数据异常时的行为
+说明预期结果和依赖的数据或设置。
 
-## 范围
+## Example / 示例
 
-列出本次具体工作，避免隐含加入 AI 或自动驾驶建议。
+Give a use case and describe how you would confirm that the change works. Use anonymized examples.
+
+提供使用场景和验证方式，示例请去除个人信息。

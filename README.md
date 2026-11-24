@@ -1,43 +1,48 @@
 # LMU Data Analysis
 
-面向 Le Mans Ultimate（LMU）车手的本地遥测工作台。导入游戏录制的 `.duckdb` 文件，回看驾驶曲线、比较单圈和长距离节奏，并跟踪自己在各赛道的圈速变化。
+**English** · [简体中文](README.zh-CN.md)
 
-[下载 V0.71](https://github.com/Saturday-365/LMU_Data_Analysis/releases/tag/v0.71) · [快速开始](#快速开始) · [用户指南](docs/desktop-v0.71.md) · [反馈问题](https://github.com/Saturday-365/LMU_Data_Analysis/issues) · [GPL-3.0](LICENSE)
+An open-source telemetry analyzer for **Le Mans Ultimate (LMU)** on Windows. Import native DuckDB recordings to compare racing laps and stints, inspect driving inputs, and track your lap times across sessions. The archive stays on your computer.
 
-![车手成长页展示最快圈、最快 5 圈平均和车辆悬停提示](docs/images/growth-v0.71.png)
+[Download V0.71](https://github.com/Saturday-365/LMU_Data_Analysis/releases/tag/v0.71) · [Quick start](#quick-start) · [Troubleshooting](#troubleshooting) · [Report an issue](https://github.com/Saturday-365/LMU_Data_Analysis/issues) · [GPL-3.0](LICENSE)
 
-*V0.71 界面示例使用模拟数据。*
+![Driver Progress chart showing the fastest lap and average of the five fastest laps for each recorded session](docs/images/growth-v0.71.png)
 
-## 快速开始
+*V0.71 screenshot with simulated data. The desktop interface is currently in Simplified Chinese. The steps below include the button labels shown in the app.*
 
-1. 准备 64 位 Windows 和 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。
-2. 在 [GitHub Releases](https://github.com/Saturday-365/LMU_Data_Analysis/releases) 的 Assets 中下载 `LMU-Data-Analysis-v0.71-win-x64.zip`。完整解压后，运行 `LMU-Data-Analysis-v0.71.exe`，保留同目录的 `_internal/`。
-3. 在 LMU 中启用原生遥测录制，跑完后将 `.duckdb` 文件拖到「批量导入遥测」。录制设置和文件位置见 [LMU 官方遥测指南](https://guide.lemansultimate.com/hc/en-gb/articles/14524956311695-Telemetry-Recording)。
-4. 在首页选择一场录制并点击「打开会话」。长期积累的数据可在「个人圈速 → 车手成长」查看。
+## Quick start
 
-桌面版使用本机档案，默认路径为 `%LOCALAPPDATA%\LMU Data Analysis`。升级前退出旧版，完整解压新版到独立目录再运行。现有档案可直接读取。[备份与换机步骤](docs/desktop-v0.71.md#备份升级和换机)
+1. Use a 64-bit Windows PC with [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+2. Download `LMU-Data-Analysis-v0.71-win-x64.zip` from the release assets. Extract the entire archive, then run `LMU-Data-Analysis-v0.71.exe` with the `_internal/` folder beside it. [V0.71 release](https://github.com/Saturday-365/LMU_Data_Analysis/releases/tag/v0.71)
+3. Enable native telemetry recording in LMU and wait for the game to finish writing the file. Drop one or more `.duckdb` files onto **Import telemetry** (批量导入遥测). Each file may be up to 256 MiB and must contain at least 60 seconds of recording and one complete lap. [Official LMU telemetry guide](https://guide.lemansultimate.com/hc/en-gb/articles/14524956311695-Telemetry-Recording)
+4. Select a recording on the home page and click **Open session** (打开会话). For progress across sessions, open **Lap Archive → Driver Progress** (个人圈速 → 车手成长).
 
-## 能做什么
+To import automatically at launch, select the game's telemetry directory in **Settings** (设置) and save it. Use **Scan now** (立即扫描) to check for new files while the app is open.
 
-| 功能 | 内容 |
+## Features
+
+| Feature | What you can do |
 | --- | --- |
-| 赛道档案 | 按赛道布局汇总完整圈、圈速和节奏。首页预览所选录制的驾驶段和分布图，可导出圈速 CSV。 |
-| 车手成长 | 同一布局的各场录制按时间排序并等距排布。对照每场最快圈和最快 5 圈平均，悬停查看车型与准确时间。 |
-| 单圈对比 | 叠加速度、刹车、油门、转向、挡位和可用的 GPS 走线，按距离或圈内时间定位并标记区间。 |
-| 会话分析 | 查看分段、理论最快圈、进出站、驾驶段圈速分布，以及有记录的调教信息。 |
-| 自动导入 | 在「设置」保存游戏遥测目录后，启动时自动扫描，也可立即扫描。 |
+| Track archive | Browse sessions by track layout, preview stint pace and lap-time distributions, and export your complete laps to CSV. |
+| Driver progress | Plot the fastest lap and mean of the five fastest laps per session. Recordings are ordered by time and evenly spaced. Hover for the car and exact date and time. |
+| Lap comparison | Overlay speed, brake, throttle, steering, gear, and available GPS traces. Align laps by distance or elapsed lap time and mark an interval for closer inspection. |
+| Session analysis | Explore sector times, theoretical best lap, pit visits, stint pace, and available setup information. |
 
-## 文档
+Driver Progress uses complete timed laps with no known pit-lane activity. Sessions with fewer than five qualifying laps still show their fastest lap. The available telemetry channels determine whether GPS, distance alignment, or sector times can be shown.
 
-- [桌面用户指南和常见问题](docs/desktop-v0.71.md)
-- [V0.71 发行说明](docs/release-v0.71.md)
-- [本地网页使用说明](docs/web-usage.md) · [遥测读取命令](docs/reader-usage.md)
-- [架构](docs/architecture.md) · [数据约定](docs/data-contract.md) · [参考资料](docs/references.md)
-- [协作说明](CONTRIBUTING.md) · [测试](tests/README.md)
+## Troubleshooting
 
-## 从源码运行
+| Issue | What to check |
+| --- | --- |
+| The desktop window does not open | Verify WebView2 is installed and that the ZIP was fully extracted. Close other app windows using the same archive. See `desktop.log` in the archive directory for details. |
+| Import was skipped or rejected | Check the file size, duration, and number of complete laps. Files with identical contents are detected as duplicates. Wait for the game to finish writing before retrying. |
+| I need to upgrade or move to a new PC | Close the app and back up the entire archive folder, including `catalog.sqlite3` and `recordings/`. The default location is `%LOCALAPPDATA%\LMU Data Analysis`. Extract the new version into a separate folder. If you used `--data-dir`, keep using that path. On another PC, copy the backup before launch and update the telemetry folder in Settings. |
 
-在 Windows 上用 Python 3.12 创建环境。下列命令启动桌面窗口。只运行本地网页时请参阅 [网页端说明](docs/web-usage.md)。
+Please report the app, LMU, and Windows versions along with steps to reproduce and the expected and actual behavior. Remove personal information from any screenshots or logs you share. [Issue templates](https://github.com/Saturday-365/LMU_Data_Analysis/issues/new/choose)
+
+## Run from source
+
+Use Git and Python 3.12 on Windows. These commands run the desktop app from the V0.71 source.
 
 ```powershell
 git clone https://github.com/Saturday-365/LMU_Data_Analysis.git
@@ -48,8 +53,15 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe scripts/desktop_app.py
 ```
 
-运行 `.\scripts\build-desktop.ps1` 可生成目录版 EXE。源码位于 `src/` 和 `web/`，构建与读取入口位于 `scripts/`。提交问题时可附上软件版本、LMU 版本、复现步骤及去除个人信息后的截图。[构建说明](docs/desktop-v0.71.md#从源码构建) · [问题模板](https://github.com/Saturday-365/LMU_Data_Analysis/issues/new/choose)
+Run `.\scripts\build-desktop.ps1` to build the distributable app directory. The project also provides a local web interface and a telemetry reader CLI.
 
-## 许可
+## Documentation
 
-项目自有源码和文档按 GNU GPL 第 3 版发布（GPL-3.0-only）。第三方组件保留各自的许可。[许可证正文](LICENSE) · [第三方声明](docs/third-party-notices.md)
+- [V0.71 release notes in English and Chinese](docs/release-v0.71.md)
+- [桌面用户指南 · Desktop user guide in Chinese](docs/desktop-v0.71.md)
+- [网页端 · Local web interface in Chinese](docs/web-usage.md) · [遥测读取 · CLI in Chinese](docs/reader-usage.md)
+- [架构 · Architecture](docs/architecture.md) · [协作 · Contributing](CONTRIBUTING.md) · [测试 · Tests](tests/README.md)
+
+## License
+
+The project is licensed under the GNU General Public License, version 3 only (GPL-3.0-only). Third-party components keep their respective licenses. [Project license](LICENSE) · [Third-party notices](docs/third-party-notices.md)

@@ -1,13 +1,13 @@
-## 变化
+## Changes / 变化
 
-说明问题与修改后的行为。
+Describe the problem and what changed. 说明问题与修改后的行为。
 
-## 验证
+## Verification / 验证
 
-记录实际完成的检查及结果，注明尚未执行的检查。
+List the checks you ran and their results. 记录实际完成的检查及结果。
 
-## 范围与数据
+## Scope and data / 范围与数据
 
-- [ ] 符合当前 V0.1 范围，或已明确确认范围变更。
-- [ ] 未提交密钥、私人遥测或个人信息。
-- [ ] 更新了相关文档；新增第三方代码时记录来源与许可。
+- [ ] The change matches the issue's scope. 改动符合关联任务的范围。
+- [ ] The diff contains no secrets, private telemetry, or personal information. 差异中未包含密钥、私人遥测或个人信息。
+- [ ] I updated affected docs and recorded any new third-party source and license. 已更新受影响的文档和第三方代码声明。
