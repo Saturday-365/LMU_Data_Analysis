@@ -1,6 +1,6 @@
 # 协作说明
 
-当前已实现核心读取、本地网页和持久存储。验证入口见 [读取说明](docs/reader-usage.md) 和 [网页说明](docs/web-usage.md)，开发依赖使用 `requirements-dev.txt`。
+当前桌面版为 V0.6，同时提供本地网页和遥测读取命令。桌面构建依赖使用 `requirements-desktop.txt`，自动化测试依赖使用 `requirements-dev.txt`。相关入口见 [桌面运行与构建](docs/desktop-v0.6.md)、[读取说明](docs/reader-usage.md)、[网页说明](docs/web-usage.md)和 [测试说明](tests/README.md)。
 
 ## 工作顺序
 
@@ -11,7 +11,8 @@
 
 ## 数据与实现
 
-- 真实样本放在 `samples/local/`，不要提交账号、密钥、完整私有遥测或个人路径。
+- 真实样本放在 `Data_Telemetry/` 或 `samples/local/`。提交范围包括源码、合成测试和文档，个人遥测、参考截图、本地档案与发行产物留在本机。
+- 提交前检查文件清单，清除其中的账号、密钥和个人路径。
 - 可共享测试样本须获得授权并去标识化；合成数据明确标为合成。
 - 不从字段名称猜测数据单位或接口含义。
 - 缺失值、异常值和真实零值分开处理。

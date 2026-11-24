@@ -1,10 +1,12 @@
 # 模块与数据流
 
-状态：读取、命令行、本地网页及持久化已实现。云端账号和同步未实现。
+V0.6 提供命令行读取、本地网页、WebView2 桌面程序和持久化档案。运行和迁移见 [桌面说明](desktop-v0.6.md)。
 
 ```mermaid
 flowchart LR
     A[本地 LMU 遥测文件] --> B[reader.py 只读检查与分圈]
+    L[配置的遥测目录] --> J[启动扫描与暂存]
+    J --> S
     B --> C[models.py 会话 / 片段 / 通道]
     C --> D[alignment.py 单圈提取与时间对齐]
     D --> E[cli.py 概览与 JSON 导出]
@@ -26,6 +28,7 @@ flowchart LR
 | `src/lmu_data_analysis/alignment.py` | 提取完整圈、时间域连续量插值及事件保持 | 保留原始数值，标注插值和缺失，不跨圈补值 |
 | `src/lmu_data_analysis/cli.py` | 摘要、选圈参数、JSON 导出 | 独立命令行入口 |
 | `src/lmu_data_analysis/web_service.py` | 导入去重、按归属提取圈轨迹、两条录制缓存 | 不依赖 HTTP 或具体存储 |
+| `src/lmu_data_analysis/auto_import.py` | 本地遥测目录设置、后台扫描及文件状态记录 | 读取配置目录的直接子文件，复用手动导入校验 |
 | `src/lmu_data_analysis/storage.py` | 存储接口及 SQLite / 本地文件实现 | 元数据与原始文件分开存储 |
 | `src/lmu_data_analysis/web_app.py` | HTTP 路由、身份注入、本地访问边界 | 当前身份仅限单一本地车手 |
 | `web/` | JavaScript 模块、Canvas 曲线与响应式界面 | 仅通过相对路径 API 取数据 |
@@ -44,9 +47,11 @@ flowchart LR
 ## 技术选择及持久化
 
 - Python 3.12 + DuckDB 1.5.5；FastAPI 0.141.1 + Uvicorn 0.53.0，前端原生 JavaScript / Canvas，无 CDN 或 Node 构建要求。
-- `drivers → sessions → laps` 使用稳定 UUID、外键和事务；`(driver_id, sha256)` 唯一约束实现车手内去重，SQLite schema 版本为 1。
+- `drivers → sessions → laps` 使用稳定 UUID、外键和事务。`(driver_id, sha256)` 唯一约束实现每个车手内的去重。SQLite 目录版本为 2，区间库以附加表保存。
 - 原始文件副本以独立随机键保存，文件名仅用于显示。高频曲线按需计算，不逐点写入目录数据库。元数据白名单排除源个人标识。
 - 上传暂存后验证，再提交文件与目录；验证失败清理临时文件，数据库写入失败清理新副本。进程崩溃仍可能留下孤立文件，云端需恢复任务。
+- FastAPI 服务启动时，已配置的目录扫描在后台运行。扫描按文件更新时间从新到旧处理，文件状态保存在档案目录的 `auto-import.json`。源文件存在写入日志或复制时发生变化会留待以后扫描。
+- 桌面版默认档案目录为 `%LOCALAPPDATA%\LMU Data Analysis`，网页版默认为项目内 `data/`。两者均可用 `--data-dir` 指定档案目录。
 - `IdentityProvider` 决定当前车手，所有记录和缓存读取先验证归属。本地固定身份不是用户认证，生产接口不接受浏览器指定车手 ID。
 - 实时读取若后续获准，将作为新增数据源适配器接入，不改动展示模型的基本职责。
 
@@ -55,6 +60,9 @@ flowchart LR
 | 方法与路径 | 内容 |
 | --- | --- |
 | `GET /api/v1/health`、`GET /api/v1/me` | 状态及当前车手 |
+| `GET /api/v1/settings/auto-import` | 读取本机遥测目录与当前扫描结果 |
+| `PUT /api/v1/settings/auto-import` | 保存 `directory` 绝对路径，传 `null` 停用自动导入 |
+| `POST /api/v1/settings/auto-import/scan` | 使用已保存路径立即启动扫描 |
 | `GET /api/v1/sessions` | 当前车手练习摘要 |
 | `GET /api/v1/archive/laps.csv` | 当前车手的全部完整圈，UTF-8 BOM CSV 下载 |
 | `POST /api/v1/sessions` | 文件原始字节，URL 编码 `X-Filename`，请求头 `X-LMU-Client: web`。新记录返回 201，内容重复返回 409，录制不足 60 秒、没有完整圈或无法解析返回 422。 |
@@ -76,7 +84,7 @@ flowchart LR
 1. 增加真实账号认证，实现 `IdentityProvider`，从服务端验证的登录身份确定车手。建立本地车手到账号的显式归属迁移，不能把各安装的固定本地身份当作同一人。
 2. 实现 PostgreSQL `SessionRepository` 和对象存储 `BlobStore`。后者按需下载临时文件交给现有解析器，原始文件不依赖客户端路径。
 3. 建立数据库迁移与批量数据迁移工具，保留练习 / 圈次 UUID、校验和与归属；目前没有自动同步或冲突合并。
-4. 解析改用隔离工作进程 / 队列，增加超时、内存限制、上传配额、分页、任务状态、孤立文件清理与恢复。当前单进程锁和 128 MB 上限仅服务本地规模；压缩文件大小不代表内存占用。
+4. 解析改用隔离工作进程 / 队列，增加超时、内存限制、上传配额、分页、任务状态、孤立文件清理与恢复。当前本机的单个文件导入上限为 256 MiB，运行内存还取决于采样规模。
 5. 部署 HTTPS、真实授权、备份恢复、保留 / 删除策略及权限测试后，再调整本机 Host / Origin 限制。当前服务不能直接暴露到公网。
 
 上述是已预留的替换边界和后续必要工作，不表示云服务已经完成。

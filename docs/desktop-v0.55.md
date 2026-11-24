@@ -1,5 +1,7 @@
 # LMU 个人遥测工作台 · 桌面 V0.55
 
+> 本页记录该历史版本。当前 `main` 的运行、换机迁移和构建步骤见 [桌面版 V0.6](desktop-v0.6.md)。
+
 解压整个发行目录后，双击 `LMU-Data-Analysis-v0.55.exe`。需要 Windows 64 位及 Microsoft Edge WebView2 Runtime。可直接打开旧版档案。
 
 ## 浏览与分析

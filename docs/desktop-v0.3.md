@@ -1,5 +1,7 @@
 # LMU 个人遥测工作台 · 桌面 V0.3
 
+> 本页记录该历史版本。当前 `main` 的运行、换机迁移和构建步骤见 [桌面版 V0.6](desktop-v0.6.md)。
+
 解压整个目录，双击 `LMU-Data-Analysis-v0.3.exe`。需要 Windows 64 位和 Microsoft Edge WebView2 Runtime。以前的录制、调教备注和圈次仍从本地档案读取。区间库也随 `catalog.sqlite3` 备份。
 
 ## 区间复盘

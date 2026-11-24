@@ -1,5 +1,7 @@
 # LMU 个人遥测工作台 · 桌面 V0.1
 
+> 本页记录该历史版本。当前 `main` 的运行、换机迁移和构建步骤见 [桌面版 V0.6](desktop-v0.6.md)。
+
 桌面版是 Windows 64 位应用。解压整个发行目录后，双击 `LMU-Data-Analysis-v0.1.exe`。运行需要 Microsoft Edge WebView2 Runtime。应用和遥测数据均可离线使用。
 
 ## 使用方法
