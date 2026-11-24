@@ -16,7 +16,7 @@ try {
     $webDir = (Resolve-Path -LiteralPath 'web').Path
     $buildDir = New-Item -ItemType Directory -Path $Build -Force
     $distDir = New-Item -ItemType Directory -Path $Dist -Force
-    $name = 'LMU-Data-Analysis-v0.7'
+    $name = 'LMU-Data-Analysis-v0.71'
     # 目录版保留 DLL 和 WebView2 资源，用户可直接解压运行。
     & $Python -B -m PyInstaller --noconfirm --onedir --windowed `
         --name $name --paths 'src' --add-data "${webDir}:web" `
@@ -25,7 +25,16 @@ try {
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }
-    Copy-Item -LiteralPath 'docs/desktop-v0.7.md' -Destination (Join-Path $distDir.FullName "$name/README.md")
+    $releaseDir = Join-Path $distDir.FullName $name
+    Copy-Item -LiteralPath 'docs/desktop-v0.71.md' -Destination (Join-Path $releaseDir 'README.md')
+    Copy-Item -LiteralPath 'LICENSE' -Destination $releaseDir
+    Copy-Item -LiteralPath 'docs/third-party-notices.md' -Destination (Join-Path $releaseDir 'THIRD_PARTY_NOTICES.md')
+    $licenses = Join-Path $releaseDir 'licenses'
+    & $Python -B 'scripts/desktop_licenses.py' $licenses
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+    Copy-Item -Path 'docs/licenses/*' -Destination $licenses
 }
 finally {
     Pop-Location

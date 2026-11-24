@@ -135,7 +135,8 @@ class WebTests(unittest.TestCase):
                                      json={'changes':{'brand':{'state':'known', 'value':'法拉利'}}})
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(self.client.get('/api/v1/sessions').json()['items'][0]['vehicle_brand'], 'Ferrari')
-        self.assertEqual(latest['pace'], {'count':2, 'best_s':10, 'best_ordinal':1, 'median_s':10, 'stddev_s':0})
+        self.assertEqual(latest['pace'], {'count':2, 'best_s':10, 'best_ordinal':1, 'top5_mean_s':None,
+                                          'median_s':10, 'stddev_s':0})
 
     def test_archive_csv_exports_owned_laps_and_preserves_missing_times(self):
         with duckdb.connect(str(self.source)) as connection:

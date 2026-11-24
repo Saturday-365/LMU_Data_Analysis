@@ -9,7 +9,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-web.txt
 ```
 
-双击根目录 `start-web.cmd`，保留启动窗口，打开 **http://127.0.0.1:8765**。关闭窗口或按 Ctrl+C 停止服务。Windows EXE 的启动和构建见 [桌面版 V0.6](desktop-v0.6.md)。
+双击根目录 `start-web.cmd`，保留启动窗口，打开 **http://127.0.0.1:8765**。关闭窗口或按 Ctrl+C 停止服务。Windows EXE 的启动和构建见 [桌面用户指南](desktop-v0.71.md)。
 
 也可运行 `.\.venv\Scripts\python.exe scripts/serve_web.py`。端口被占用时附加 `--port 8766`，访问对应地址。可通过 `--data-dir` 更换存储目录，默认是项目内 `data/`。
 
@@ -55,7 +55,7 @@ py -3.12 -m venv .venv
 - `data/` 整体被 Git 忽略。备份前停止服务，再复制整个目录；只备份目录数据库不足以恢复曲线。
 - 原始副本仍含游戏写入的所有字段；展示接口仅返回元数据白名单，不返回源车手名、Steam ID 或车辆调校。
 
-升级网页版时，停止服务后更新源码，重新安装 `requirements-web.txt` 中的依赖，再启动服务。迁移时关闭两台电脑上的软件，将源档案目录复制到目标电脑，随后可用 `--data-dir` 打开副本。桌面 EXE 默认使用 `%LOCALAPPDATA%\LMU Data Analysis`，详情见 [桌面迁移说明](desktop-v0.6.md#迁移到另一台电脑)。
+升级网页版时，停止服务后更新源码，重新安装 `requirements-web.txt` 中的依赖，再启动服务。迁移时关闭两台电脑上的软件，将源档案目录复制到目标电脑，随后可用 `--data-dir` 打开副本。桌面 EXE 默认使用 `%LOCALAPPDATA%\LMU Data Analysis`，详情见 [桌面迁移说明](desktop-v0.71.md#备份升级和换机)。
 
 此版本只监听本机 `127.0.0.1`，没有账号登录、联网同步或云备份。云端替换边界见 [架构说明](architecture.md)。
 

@@ -2,9 +2,9 @@
 
 ## Windows 桌面
 
-`build-desktop.ps1` 在项目根目录执行 PyInstaller，生成可运行的目录版。默认 Python 为 `.venv/Scripts/python.exe`，也可通过 `-Python` 指定解释器。使用 `-Dist` 和 `-Build` 可设置输出目录和构建缓存目录，默认分别为 `dist/` 和 `build/`。构建将当前版本的桌面说明复制为发行目录内的 `README.md`。
+`build-desktop.ps1` 在项目根目录执行 PyInstaller，生成可运行的目录版。默认 Python 为 `.venv/Scripts/python.exe`，也可通过 `-Python` 指定解释器。使用 `-Dist` 和 `-Build` 可设置输出目录和构建缓存目录，默认分别为 `dist/` 和 `build/`。发行目录包含用户指南、项目许可证及第三方声明。
 
-`desktop_app.py` 使用 WebView2 启动本机界面。可通过 `--data-dir` 指定档案目录。默认值、依赖安装及拉取新版后的构建步骤见 [桌面版 V0.7](../docs/desktop-v0.7.md)。
+`desktop_app.py` 使用 WebView2 启动本机界面。可通过 `--data-dir` 指定档案目录。默认值、依赖安装及拉取新版后的构建步骤见 [桌面版 V0.71](../docs/desktop-v0.71.md)。
 
 ## 本地网页
 

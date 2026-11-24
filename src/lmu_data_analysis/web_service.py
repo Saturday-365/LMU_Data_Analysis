@@ -3,10 +3,11 @@
 from collections import OrderedDict, defaultdict
 import csv
 from datetime import datetime, timezone
+from heapq import nsmallest
 from io import StringIO
 import math
 from pathlib import Path
-from statistics import median, pstdev
+from statistics import mean, median, pstdev
 from threading import RLock
 from uuid import uuid4
 
@@ -203,6 +204,7 @@ def public_session(row, detail=False):
     # 直接读取已有目录摘要，历史页无需逐个重新打开 DuckDB。
     pace = {'count': len(counted), 'best_s': best['lap_time_s'] if best else None,
             'best_ordinal': best['complete_lap_number'] if best else None,
+            'top5_mean_s': mean(nsmallest(5, pace_times)) if len(pace_times) >= 5 else None,
             'median_s': median(pace_times) if pace_times else None,
             'stddev_s': pstdev(pace_times) if len(pace_times) > 1 else None}
     metadata = data['metadata']

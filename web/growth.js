@@ -1,226 +1,203 @@
-import {dateLabel, lapTime, trackName, typeLabel} from './archive.js';
-import {growthGroups, growthSummary, hasPace, timeChange} from './growth-data.js';
+import {lapTime, typeLabel, vehicleName} from './archive.js';
+import {chartHits, growthAxis, growthGroups, minimumGrowthWidth} from './growth-data.js';
 
 const $ = id => document.getElementById(id);
-const day = new Intl.DateTimeFormat('zh-CN', {month:'numeric', day:'numeric'});
+const fullDay = new Intl.DateTimeFormat('zh-CN', {year:'numeric', month:'numeric', day:'numeric'});
+const dayAndTime = new Intl.DateTimeFormat('zh-CN', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
+const yearAndTime = new Intl.DateTimeFormat('zh-CN', {year:'numeric', month:'numeric', day:'numeric',
+  hour:'2-digit', minute:'2-digit'});
 const clock = new Intl.DateTimeFormat('zh-CN', {hour:'2-digit', minute:'2-digit'});
-const colors = {fastest:'#ffb58d', pace:'#80ced9', record:'#9fe0be'};
+const exactClock = new Intl.DateTimeFormat('zh-CN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+const recordedAt = new Intl.DateTimeFormat('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit',
+  hour:'2-digit', minute:'2-digit', second:'2-digit'});
+const series = [
+  {field:'fastest', label:'最快圈', dashed:false},
+  {field:'top5', label:'最快 5 圈平均', dashed:true},
+];
 
-function seconds(ms){return (Math.abs(ms) / 1000).toFixed(3) + ' 秒';}
-
-function setChange(id, text, change = 0){
-  const target = $(id);
-  target.textContent = text;
-  target.dataset.improved = String(change < 0);
-}
-
-function changeLabel(change, lower, higher){
-  if(change === 0) return '与基准持平';
-  return '较基准' + (change < 0 ? lower : higher) + ' ' + seconds(change);
-}
-
-function groupLabel(group){
-  const {session} = group.points.at(-1);
-  const meta = session.metadata;
-  return [trackName(meta), typeLabel(meta.SessionType), meta.CarClass, session.vehicle_model || meta.CarName].join(' · ');
-}
-
-function milestoneItem({point, change}, onOpen){
-  const item = document.createElement('li');
-  item.className = 'growth-milestone';
-  const icon = document.createElement('span');
-  icon.className = 'growth-milestone-icon';
-  icon.dataset.icon = change == null ? 'stopwatch' : 'trend';
-  icon.setAttribute('aria-hidden', 'true');
-  const body = document.createElement('div');
-  const heading = document.createElement('h4');
-  heading.textContent = change == null ? '建立基准' : '刷新个人最佳';
-  const value = document.createElement('p');
-  value.textContent = lapTime(point.pace.best_s);
-  if(change != null){
-    const delta = document.createElement('span');
-    delta.textContent = '快 ' + seconds(change);
-    value.append(delta);
-  }
-  const date = document.createElement('time');
-  date.dateTime = new Date(point.time).toISOString();
-  date.textContent = dateLabel(date.dateTime);
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'overview-best';
-  button.textContent = '查看最快圈';
-  button.setAttribute('aria-label', '查看 ' + date.textContent + ' 的最快圈');
-  button.onclick = () => onOpen(point);
-  body.append(heading, value, date, button);
-  item.append(icon, body);
-  return item;
-}
-
-function drawGrowth(canvas, trend, selected){
+function drawGrowth(canvas, rows){
   const {width, height} = canvas.getBoundingClientRect();
-  if(!trend.length || width < 140) return null;
+  if(!rows.length || width < 140) return [];
   const ratio = window.devicePixelRatio || 1;
-  canvas.width = Math.round(width * ratio);
+  canvas.width = Math.min(16384, Math.round(width * ratio));
   canvas.height = Math.round(height * ratio);
   const ctx = canvas.getContext('2d');
-  ctx.scale(ratio, ratio);
-  const left = 67, right = width - 15, top = 12, bottom = height - 26;
-  const last = trend.length - 1;
-  const x = index => last ? left + (right - left) * index / last : (left + right) / 2;
+  ctx.scale(canvas.width / width, canvas.height / height);
+  const {left, right, position, ticks} = growthAxis(rows.length, width);
+  const top = 15, bottom = height - 27;
+  const first = rows[0].time, last = rows.at(-1).time;
   let low = Infinity, high = -Infinity;
-  for(const {point:{pace}} of trend){
-    const median = hasPace(pace) ? pace.median_s : pace.best_s;
-    low = Math.min(low, pace.best_s, median);
-    high = Math.max(high, pace.best_s, median);
+  for(const row of rows){
+    for(const {field} of series){
+      if(row[field] == null) continue;
+      low = Math.min(low, row[field]);
+      high = Math.max(high, row[field]);
+    }
   }
-  const padding = Math.max(.04, (high - low) * .12);
+  const padding = Math.max(.05, (high - low) * .08);
   low = Math.max(0, low - padding);
   high += padding;
   const y = value => top + (value - low) * (bottom - top) / (high - low);
   ctx.font = '11px "Segoe UI", sans-serif';
   ctx.textAlign = 'right';
   ctx.fillStyle = '#aab8c4';
+  ctx.strokeStyle = '#303a42';
   for(let i = 0; i <= 4; i++){
     const value = low + (high - low) * i / 4;
     const tick = y(value);
-    ctx.strokeStyle = '#303a42';
     ctx.beginPath();
     ctx.moveTo(left, tick);
     ctx.lineTo(right, tick);
     ctx.stroke();
     ctx.fillText(lapTime(value), left - 8, tick + 4);
   }
-  const firstTime = trend[0].point.time, lastTime = trend[last].point.time;
-  const dates = day.format(firstTime) === day.format(lastTime) ? clock : day;
-  ctx.textAlign = last ? 'left' : 'center';
-  ctx.fillText(dates.format(firstTime), x(0), height - 7);
-  if(last){
-    ctx.textAlign = 'right';
-    ctx.fillText(dates.format(lastTime), x(last), height - 7);
+  const sameDay = fullDay.format(first) === fullDay.format(last);
+  const formatter = sameDay ? (last - first < 120000 ? exactClock : clock)
+    : new Date(first).getFullYear() === new Date(last).getFullYear() ? dayAndTime : yearAndTime;
+  for(const index of ticks){
+    ctx.textAlign = rows.length === 1 ? 'center' : index === 0 ? 'left' : index === rows.length - 1 ? 'right' : 'center';
+    ctx.fillText(formatter.format(rows[index].time), position(index), height - 8);
   }
-  ctx.strokeStyle = '#738590';
-  ctx.beginPath();
-  ctx.moveTo(x(selected), top);
-  ctx.lineTo(x(selected), bottom);
-  ctx.stroke();
 
-  // 样本不足的中位圈断开绘制，虚线保留截至每次录制的历史最佳。
-  for(const [field, color] of Object.entries(colors)){
+  const markers = [];
+  const style = getComputedStyle(canvas);
+  for(const {field, label, dashed} of series){
+    const points = [];
     ctx.beginPath();
-    ctx.strokeStyle = ctx.fillStyle = color;
+    ctx.strokeStyle = ctx.fillStyle = style.getPropertyValue('--growth-' + field).trim();
     ctx.lineWidth = 1.6;
-    ctx.setLineDash(field === 'record' ? [5, 4] : []);
-    let previous = null;
-    const dots = [];
-    trend.forEach(({point:{pace}, best, record}, index) => {
-      const value = field === 'fastest' ? pace.best_s : field === 'record' ? best : hasPace(pace) ? pace.median_s : null;
-      if(value == null){previous = null; return;}
-      const pos = x(index);
-      const row = y(value);
-      if(previous == null) ctx.moveTo(pos, row);
-      else {
-        if(field === 'record') ctx.lineTo(pos, previous);
-        ctx.lineTo(pos, row);
-      }
-      previous = row;
-      if(field !== 'record' || record) dots.push([pos, row, index === selected ? 4.5 : 3]);
-    });
+    ctx.setLineDash(dashed ? [5, 4] : []);
+    let drawing = false;
+    // 缺少最快 5 圈平均的录制在该线留空，仍保留它的最快圈和表格记录。
+    for(const [index, row] of rows.entries()){
+      const value = row[field];
+      if(value == null){drawing = false; continue;}
+      const marker = {x:position(index), y:y(value), row, field, label, value};
+      ctx[drawing ? 'lineTo' : 'moveTo'](marker.x, marker.y);
+      points.push(marker);
+      drawing = true;
+    }
     ctx.stroke();
-    for(const [pos, row, radius] of dots){
+    ctx.setLineDash([]);
+    for(const marker of points){
       ctx.beginPath();
-      ctx.arc(pos, row, radius, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(marker.x, marker.y, dashed ? 4.7 : 3.5, 0, Math.PI * 2);
+      if(dashed) ctx.stroke();
+      else ctx.fill();
+      markers.push(marker);
     }
   }
-  return {left, right, top, bottom, last};
+  return markers;
+}
+
+function tooltipItem({row:{session, time}, field, label, value}){
+  const item = document.createElement('div');
+  const title = document.createElement('strong');
+  title.className = 'growth-' + field;
+  title.textContent = label + ' · ' + lapTime(value);
+  const car = document.createElement('div');
+  car.textContent = (session.vehicle_model ? '车型 ' : '车辆标识 ') + vehicleName(session);
+  const date = document.createElement('time');
+  date.dateTime = new Date(time).toISOString();
+  date.textContent = recordedAt.format(time) + ' · ' + typeLabel(session.metadata.SessionType);
+  item.append(title, car, date);
+  return item;
 }
 
 export class DriverGrowth {
   constructor(onOpen){
-    this.onOpen = ({session, pace}) => onOpen(session.id, pace.best_ordinal, 'telemetry');
+    this.onOpen = onOpen;
     this.groups = [];
-    this.group = $('growth-group');
-    this.recording = $('growth-recording');
+    this.rows = [];
+    this.markers = [];
+    this.track = $('growth-track');
+    this.viewport = $('growth-viewport');
+    this.plot = $('growth-plot');
     this.canvas = $('growth-chart');
-    this.group.onchange = () => this.render();
-    this.recording.onchange = () => this.selectRecording();
-    $('growth-open-recording').onclick = () => this.onOpen(this.trend[this.recording.selectedIndex].point);
-    this.canvas.onclick = event => {
-      if(!this.plot) return;
-      const {left, right, top, bottom, last} = this.plot;
-      if(event.offsetX < left - 6 || event.offsetX > right + 6
-        || event.offsetY < top - 6 || event.offsetY > bottom + 6) return;
-      const position = (event.offsetX - left) / (right - left);
-      this.recording.selectedIndex = Math.max(0, Math.min(last, Math.round(position * last)));
-      this.selectRecording();
-    };
+    this.tooltip = $('growth-tooltip');
+    this.track.onchange = () => this.showTrack();
+    this.canvas.onpointermove = event => this.showTooltip(event.offsetX, event.offsetY);
+    this.canvas.onpointerleave = () => this.hideTooltip();
+    this.viewport.onscroll = () => this.hideTooltip();
     new ResizeObserver(() => this.draw()).observe(this.canvas);
   }
 
   setSessions(sessions){this.groups = growthGroups(sessions);}
 
   render(){
-    const group = this.groups.find(item => item.key === this.group.value)
-      || this.groups.find(({points}) => points[0].time < points.at(-1).time) || this.groups[0];
-    $('growth-empty').hidden = Boolean(group);
-    $('growth-filter').hidden = $('growth-content').hidden = !group;
-    if(!group){
-      this.trend = [];
-      this.group.replaceChildren();
-      this.recording.replaceChildren();
-      $('growth-period').textContent = '';
-      return;
-    }
-    this.group.replaceChildren(...this.groups.map(item => new Option(groupLabel(item), item.key)));
-    this.group.value = group.key;
-    this.group.title = groupLabel(group);
-    const {points} = group;
-    const first = points[0], latest = points.at(-1);
-    const date = point => dateLabel(point.session.metadata.RecordingTime);
-    $('growth-period').textContent = points.length === 1 ? '1 次录制 · ' + date(first)
-      : points.length + ' 次录制 · ' + date(first) + ' 至 ' + date(latest);
-
-    const {best, trend, milestones, firstPace, recentPace} = growthSummary(points);
-    this.trend = trend;
-    $('growth-best').textContent = lapTime(best.pace.best_s);
-    const bestChange = timeChange(best.pace.best_s, first.pace.best_s);
-    setChange('growth-best-change', latest.time === first.time ? '已建立起点'
-      : changeLabel(bestChange, '快', '慢'), bestChange);
-    $('growth-pace').textContent = lapTime(recentPace?.pace.median_s);
-    $('growth-spread').textContent = recentPace ? recentPace.pace.stddev_s.toFixed(3) + ' 秒' : '—';
-    const comparablePace = Boolean(firstPace && recentPace.time > firstPace.time);
-    for(const [id, field, lower, higher] of [
-      ['growth-pace-change','median_s','快','慢'], ['growth-spread-change','stddev_s','收窄','扩大']
-    ]){
-      const change = comparablePace ? timeChange(recentPace.pace[field], firstPace.pace[field]) : 0;
-      const source = recentPace && recentPace !== latest ? ' · ' + date(recentPace) : '';
-      setChange(id, comparablePace ? changeLabel(change, lower, higher) + source
-        : recentPace ? '已建立基准 · ' + date(recentPace) : '每场至少需要 3 个统计圈', change);
-      $(id).title = recentPace ? '最近可统计录制 ' + date(recentPace) : '';
-    }
-
-    $('growth-record-count').textContent = '已刷新 ' + (milestones.length - 1) + ' 次';
-    $('growth-milestone-list').replaceChildren(...milestones.reverse().map(item => milestoneItem(item, this.onOpen)));
-    const current = this.recording.value;
-    this.recording.replaceChildren(...points.map((point,index) => new Option(
-      (index + 1) + ' · ' + date(point), point.session.id)));
-    const currentIndex = points.findIndex(({session}) => session.id === current);
-    this.recording.selectedIndex = currentIndex < 0 ? points.length - 1 : currentIndex;
-    this.selectRecording();
+    const selected = this.track.value;
+    this.track.replaceChildren(...this.groups.map(group => new Option(group.label, group.key)));
+    if(this.groups.some(group => group.key === selected)) this.track.value = selected;
+    this.showTrack();
   }
 
-  selectRecording(){
-    const {point:{pace, session}, best, record} = this.trend[this.recording.selectedIndex];
-    const gap = timeChange(pace.best_s, best);
-    const context = record ? (this.recording.selectedIndex === 0 ? '成长基准' : '刷新个人最佳')
-      : gap === 0 ? '追平当时的个人最佳' : '距当时个人最佳 ' + seconds(gap);
-    const stats = hasPace(pace) ? '中位圈 ' + lapTime(pace.median_s) + ' · 波动 ' + pace.stddev_s.toFixed(3) + ' 秒'
-      : '统计圈少于 3 圈';
-    $('growth-recording-note').textContent = [
-      '最快圈 ' + lapTime(pace.best_s), stats, pace.count + ' / ' + session.complete_lap_count + ' 个统计圈', context
-    ].join(' · ');
+  showTrack(){
+    const group = this.groups[this.track.selectedIndex];
+    const changedTrack = group?.key !== this.activeTrack;
+    this.activeTrack = group?.key;
+    $('growth-filter').hidden = $('growth-content').hidden = !group;
+    const rows = group?.rows || [];
+    $('growth-count').textContent = rows.length + ' 次录制';
+    $('growth-rows').replaceChildren(...rows.map(row => this.createRow(row)));
+    const dated = group?.hasLayout ? rows.filter(row => row.time != null) : [];
+    const hasChart = dated.some(row => row.fastest != null);
+    this.rows = hasChart ? dated : [];
+    this.viewport.hidden = $('growth-chart-note').hidden = !hasChart;
+    $('growth-chart-empty').hidden = hasChart;
+    this.plot.style.minWidth = minimumGrowthWidth(this.rows.length) + 'px';
+    if(changedTrack) this.viewport.scrollLeft = this.viewport.scrollWidth;
     this.draw();
   }
 
-  draw(){this.plot = drawGrowth(this.canvas, this.trend || [], this.recording.selectedIndex);}
+  createRow({session, time, fastest, top5}){
+    const row = document.createElement('tr');
+    row.insertCell().textContent = time == null ? '录制时间未知' : recordedAt.format(time);
+    row.insertCell().textContent = vehicleName(session);
+    row.insertCell().textContent = typeLabel(session.metadata.SessionType);
+    const fastestCell = row.insertCell();
+    fastestCell.className = 'growth-fastest';
+    fastestCell.textContent = lapTime(fastest);
+    if(session.pace.best_ordinal != null){
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'overview-best';
+      button.textContent = lapTime(fastest);
+      button.title = '打开会话的最快圈';
+      button.onclick = () => this.onOpen(session.id, session.pace.best_ordinal, 'telemetry');
+      fastestCell.replaceChildren(button);
+    }
+    const top5Cell = row.insertCell();
+    top5Cell.className = 'growth-top5';
+    top5Cell.textContent = lapTime(top5);
+    row.insertCell().textContent = session.pace.count + ' / ' + session.complete_lap_count;
+    return row;
+  }
+
+  draw(){
+    this.hideTooltip();
+    this.markers = drawGrowth(this.canvas, this.rows);
+    $('growth-scroll-note').hidden = this.viewport.scrollWidth <= this.viewport.clientWidth;
+  }
+
+  hideTooltip(){
+    this.tooltip.hidden = true;
+    this.hovered = null;
+  }
+
+  showTooltip(x, y){
+    const hits = chartHits(this.markers, x, y);
+    const marker = hits[0];
+    if(!marker){this.hideTooltip(); return;}
+    if(marker === this.hovered) return;
+    this.hovered = marker;
+    this.tooltip.replaceChildren(...hits.map(tooltipItem));
+    this.tooltip.hidden = false;
+    const {offsetWidth:width, offsetHeight:height} = this.tooltip;
+    const visibleLeft = this.viewport.scrollLeft;
+    const visibleRight = visibleLeft + this.viewport.clientWidth;
+    const left = marker.x + width + 14 <= visibleRight ? marker.x + 14 : marker.x - width - 14;
+    const top = Math.min(this.canvas.clientHeight - height, marker.y - height / 2);
+    this.tooltip.style.left = Math.max(visibleLeft, Math.min(left, visibleRight - width)) + 'px';
+    this.tooltip.style.top = Math.max(0, top) + 'px';
+  }
 }

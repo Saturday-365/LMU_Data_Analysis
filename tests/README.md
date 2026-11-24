@@ -27,4 +27,4 @@ node --test tests/test_interval_metrics.mjs tests/test_growth.mjs
 
 `test_auto_import.py` 验证目录设置、启动扫描、按更新时间导入、跨重启跳过未变更文件及等待读写结束后的重试。
 
-`test_growth.mjs` 验证成长页按录制时间排序，隔离不同车辆和赛道布局，以及正确处理单场基准、同一时刻和毫秒级并列圈速。
+`test_growth.mjs` 验证成长页按赛道布局聚合、按录制时间排序、保留缺少平均圈或录制时间的会话，以及图表处理位置重合的数据点。`test_overview.py` 验证最快 5 圈平均复用既有的统计圈筛选条件。

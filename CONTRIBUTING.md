@@ -1,10 +1,10 @@
 # 协作说明
 
-当前桌面版为 V0.6，同时提供本地网页和遥测读取命令。桌面构建依赖使用 `requirements-desktop.txt`，自动化测试依赖使用 `requirements-dev.txt`。相关入口见 [桌面运行与构建](docs/desktop-v0.6.md)、[读取说明](docs/reader-usage.md)、[网页说明](docs/web-usage.md)和 [测试说明](tests/README.md)。
+桌面构建依赖使用 `requirements-desktop.txt`，自动化测试依赖使用 `requirements-dev.txt`。相关入口见 [桌面运行与构建](docs/desktop-v0.71.md)、[读取说明](docs/reader-usage.md)、[网页说明](docs/web-usage.md)和 [测试说明](tests/README.md)。贡献适用项目的 [GPL-3.0-only 许可证](LICENSE)。
 
 ## 工作顺序
 
-1. 先阅读 [V0.1 范围](docs/scope-v0.1.md) 与 [开发路线](docs/roadmap.md)。
+1. 先查看 [当前功能](README.md#能做什么) 与相关 [架构说明](docs/architecture.md)。
 2. 为具体需求建立任务，写清输入、输出及验收方法。
 3. 使用独立分支完成修改，提交说明描述实际变化。
 4. PR 中说明验证结果；尚未执行的检查明确标记。

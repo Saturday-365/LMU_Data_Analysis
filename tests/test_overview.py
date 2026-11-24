@@ -17,6 +17,17 @@ def record(name, laps, *, layout='Monza', kind='Race', entry='Garage 59 2026 #10
 
 
 class OverviewTests(unittest.TestCase):
+    def test_catalog_top_five_averages_only_fastest_eligible_laps(self):
+        laps = [(106, False), (90, True), (101, False), (108, False),
+                (102, False), (104, False), (100, False), (None, False), (0, False), (103, False)]
+        rows = [record('many', laps), record('five', [(time, False) for time in range(100, 105)]),
+                record('few', [(100, False)] * 4 + [(90, True)]), record('none', [(90, True)])]
+        many, five, few, none = [item['pace'] for item in catalog_overview(rows)['items']]
+        self.assertEqual((many['best_s'], many['best_ordinal'], many['top5_mean_s']), (100, 7, 102))
+        self.assertEqual(five['top5_mean_s'], 102)
+        self.assertEqual((few['best_s'], few['top5_mean_s']), (100, None))
+        self.assertIsNone(none['top5_mean_s'])
+
     def test_brand_mapping_is_specific_and_annotations_take_precedence(self):
         metadata = {'CarClass':'GT3','CarName':'Proton Competition 2026 #75:ELMS'}
         self.assertEqual(vehicle_brand(metadata), ('Porsche','entry'))

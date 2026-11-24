@@ -1,57 +1,58 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {growthGroups, growthSummary, timeChange} from '../web/growth-data.js';
+import {chartHits, growthAxis, growthGroups, minimumGrowthWidth} from '../web/growth-data.js';
 
-function session(id, date, best, options = {}){
-  const {count = 5, median = best + 1, spread = .4, model = null, metadata = {}} = options;
-  return {id, vehicle_model:model, vehicle_brand:'Ferrari', metadata:{
-    TrackName:'Monza', TrackLayout:'Grand Prix', CarClass:'GT3', CarName:'Ferrari #51',
-    SessionType:'Race', RecordingTime:date, ...metadata
-  }, pace:{count, best_s:best, median_s:median, stddev_s:spread}};
+function session(id, date, options = {}){
+  const {model, layout = 'Grand Prix', name = 'Monza', type = 'Race', best = 110, top5 = 111} = options;
+  return {id, vehicle_model:model, metadata:{TrackName:name, TrackLayout:layout, SessionType:type,
+    RecordingTime:date}, pace:{best_s:best, top5_mean_s:top5}};
 }
 
-test('uses recorded chronology and keeps models, entries, layouts and session types separate', () => {
+test('groups different models and session types by track layout and sorts by recorded time', () => {
   const first = '2026-11-21T12_23_11Z', latest = '2026-11-21T15_38_03Z';
   const groups = growthGroups([
-    session('later', latest, 110), session('earlier', first, 111),
-    session('other-entry', first, 109, {metadata:{CarName:'Ferrari #54'}}),
-    session('model-a', first, 109, {model:'Ferrari 296 GT3'}),
-    session('model-b', latest, 108, {model:'Ferrari 296 GT3', metadata:{CarName:'Ferrari #54'}}),
-    session('other-model', first, 109, {model:'Ferrari 488 GT3'}),
-    session('other-group', first, 103, {metadata:{CarClass:'Hypercar'}}),
-    session('other-layout', first, 105, {metadata:{TrackLayout:'Junior'}}),
-    session('practice', first, 107, {metadata:{SessionType:'Practice'}}),
-    session('missing-date', null, 100), session('missing-layout', first, 100, {metadata:{TrackLayout:''}}),
-    session('untimed', first, null), session('local-time-unknown', '2026-11-21T15:40:00', 100)
+    session('later', latest, {model:'Ferrari 296 GT3', top5:null}),
+    session('earlier', first, {model:'BMW M4 GT3', type:'Practice'}),
+    session('short', latest, {layout:'Junior'}),
+    session('untimed', null, {best:null, top5:null}),
+    session('missing-layout', first, {layout:''}), session('missing-track', first, {name:''})
   ]);
-  const ids = groups.map(({points}) => points.map(({session}) => session.id));
-  assert.deepEqual(ids.slice(0, 2), [['earlier','later'], ['model-a','model-b']]);
-  assert.deepEqual(ids.slice(2).flat().sort(), ['other-entry','other-group','other-layout','other-model','practice']);
+  const grouped = groups.map(({label, rows}) => [label, rows.map(({session}) => session.id)]);
+  assert.deepEqual(grouped.slice(0, 2), [
+    ['Monza · Grand Prix', ['earlier','later','untimed']], ['Monza · Junior', ['short']]
+  ]);
+  assert.deepEqual(Object.fromEntries(grouped.slice(2)), {'Monza · 布局未知':['missing-layout'], '未识别赛道':['missing-track']});
+  assert.equal(groups[0].rows[1].top5, null);
+  assert.equal(groups[0].rows[2].time, null);
+  assert.equal(groups[0].rows[2].fastest, null);
+  assert.ok(groups.slice(2).every(group => !group.hasLayout));
 });
 
-test('records a baseline and only improvements visible at millisecond resolution', () => {
-  const [group] = growthGroups([
-    session('base', '2026-11-20T18:00:00Z', 111.4214),
-    session('faster', '2026-11-21T18:00:00Z', 110.3594, {count:1}),
-    session('same-start', '2026-11-21T18:00:00Z', 110.410),
-    session('rounded-tie', '2026-11-22T18:00:00Z', 110.3591, {median:112.50, spread:.70}),
-    session('slower', '2026-11-23T18:00:00Z', 112.0, {count:2})
-  ]);
-  const summary = growthSummary(group.points);
-  assert.equal(summary.best.session.id, 'faster');
-  assert.deepEqual(summary.milestones.map(({point, change}) => [point.session.id, change]), [['base',null], ['faster',-1062]]);
-  assert.deepEqual(summary.trend.map(({record}) => record), [true,true,false,false,false]);
-  assert.deepEqual(summary.trend.map(({best}) => best), [111.4214,110.3594,110.3594,110.3594,110.3594]);
-  assert.equal(summary.firstPace.session.id, 'base');
-  assert.equal(summary.recentPace.session.id, 'rounded-tie');
-  assert.equal(timeChange(summary.recentPace.pace.stddev_s, summary.firstPace.pace.stddev_s), 300);
+test('finds the nearest point and shows overlapping values from either series', () => {
+  const fastest = {x:24, y:32}, top5 = {x:24, y:34}, separate = {x:25, y:47};
+  const points = [fastest, top5, separate];
+  assert.deepEqual(chartHits(points, 24, 33.8), [top5, fastest]);
+  assert.deepEqual(chartHits(points, 25, 47), [separate]);
+  assert.deepEqual(chartHits(points, 38, 33), []);
 });
 
-test('a single record establishes a baseline without a pace claim on too few laps', () => {
-  const [group] = growthGroups([session('only', '2026-11-20T18:00:00Z', 110, {count:2})]);
-  const summary = growthSummary(group.points);
-  assert.equal(summary.firstPace, undefined);
-  assert.equal(summary.recentPace, undefined);
-  assert.equal(summary.milestones.length, 1);
-  assert.equal(summary.milestones[0].change, null);
+test('spreads 59 recordings with readable gaps and selects real recording indices for ticks', () => {
+  const count = 59;
+  const width = minimumGrowthWidth(count);
+  const {position, ticks, left, right} = growthAxis(count, width);
+  assert.equal(position(0), left);
+  assert.equal(position(58), right);
+  assert.equal(position(58) - position(57), 16);
+  assert.equal(position(1) - position(0), 16);
+  assert.equal(ticks[0], 0);
+  assert.equal(ticks.at(-1), 58);
+  assert.ok(ticks.every((index, i) => i === 0 || position(index) - position(ticks[i-1]) >= 140));
+  assert.ok(growthAxis(count, 1460).ticks.length > ticks.length);
+});
+
+test('centers one recording and draws endpoints for two recordings', () => {
+  const single = growthAxis(1, 300);
+  assert.deepEqual(single.ticks, [0]);
+  assert.equal(single.position(0), (single.left + single.right) / 2);
+  assert.deepEqual(growthAxis(2, 1460).ticks, [0, 1]);
 });

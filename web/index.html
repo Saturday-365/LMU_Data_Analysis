@@ -17,7 +17,7 @@
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="LMU 遥测工作台首页"><span class="brand-mark">L/</span><span>LMU<span class="brand-sub">个人遥测工作台</span></span></a>
-    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.7</span></div>
+    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.71</span></div>
     <button id="open-archive" class="session-item archive-nav active" type="button" data-icon="dashboard" aria-current="page">个人圈速</button>
     <button id="open-settings" class="session-item settings-nav" type="button" data-icon="settings">设置</button>
     <label id="dropzone" class="import-box" for="file-input"><span class="import-icon" data-icon="upload" aria-hidden="true"></span><strong>批量导入遥测</strong><span>点击选择或拖入 .duckdb</span><small>至少 1 分钟 · 至少 1 个完整圈</small><small id="import-limit">文件保存在本机</small></label>
@@ -116,40 +116,34 @@
         </div>
         <section id="archive-growth" aria-labelledby="growth-title" hidden>
           <header class="growth-header">
-            <div><h2 id="growth-title">车手成长</h2><p id="growth-period" class="info-note"></p></div>
-            <label id="growth-filter">比较组合 <select id="growth-group"></select></label>
-          </header>
-          <p id="growth-empty" class="archive-panel info-note" role="status" hidden>还没有能建立成长基准的录制。需要录制时间、赛道布局、车辆、组别、会话类型和至少一个统计圈。</p>
-          <div id="growth-content" hidden>
-            <dl class="growth-metrics">
-              <div class="growth-metric"><dt>个人最佳</dt><dd id="growth-best"></dd><dd id="growth-best-change" class="growth-change"></dd></div>
-              <div class="growth-metric"><dt>最近中位圈速</dt><dd id="growth-pace"></dd><dd id="growth-pace-change" class="growth-change"></dd></div>
-              <div class="growth-metric"><dt>最近圈速波动</dt><dd id="growth-spread"></dd><dd id="growth-spread-change" class="growth-change"></dd></div>
-            </dl>
-            <div class="growth-panels">
-              <section class="archive-panel growth-chart-panel" aria-labelledby="growth-chart-title">
-                <div class="archive-panel-heading"><h3 id="growth-chart-title">进步曲线</h3>
-                  <div class="growth-legend"><span>最快圈</span><span>中位圈</span><span>历史最佳</span></div>
-                </div>
-                <canvas id="growth-chart" role="img" aria-label="按录制顺序排列的最快圈、中位圈和历史最佳，使用查看录制菜单查看具体数值"></canvas>
-                <p class="info-note growth-chart-note">圈时越低越快。横轴按录制顺序等距排列，点击曲线可切换录制。</p>
-                <div class="growth-selection">
-                  <label>查看录制 <select id="growth-recording"></select></label>
-                  <button id="growth-open-recording" type="button" class="archive-link" data-icon="forward">查看最快圈</button>
-                  <p id="growth-recording-note" class="info-note" aria-live="polite"></p>
-                </div>
-              </section>
-              <section class="archive-panel growth-milestones" aria-labelledby="growth-milestones-title">
-                <div class="archive-panel-heading"><h3 id="growth-milestones-title">个人里程碑</h3><span id="growth-record-count"></span></div>
-                <ol id="growth-milestone-list"></ol>
-              </section>
+            <div><h2 id="growth-title">车手成长</h2><p id="growth-count" class="info-note"></p></div>
+            <div id="growth-filter" class="growth-filter">
+              <label for="growth-track">赛道布局</label><select id="growth-track"></select>
             </div>
-            <details class="growth-method">
-              <summary>统计口径</summary>
-              <p>按赛道布局、车辆、组别和会话类型分别比较。有车型时使用车型，否则使用录制中的完整车辆条目。仅统计有圈时且无已知进站状态的完整圈。游戏判定的圈次有效性保持未知。</p>
-              <p>个人最佳对照最早录制的最快圈。节奏和波动对照最早一场有至少 3 个统计圈的录制。圈速波动为标准差，越小代表这一场的圈速越集中。</p>
-              <p>天气、油量、轮胎和赛道状况会影响圈速。接力文件按整份录制汇总，请结合实际驾驶时段确认个人成绩。</p>
-            </details>
+          </header>
+          <div id="growth-content" hidden>
+            <section class="archive-panel growth-chart-panel" aria-labelledby="growth-chart-title">
+              <div class="archive-panel-heading"><h3 id="growth-chart-title">进步曲线</h3>
+                <div class="growth-legend"><span class="growth-fastest">最快圈</span><span class="growth-top5">最快 5 圈平均</span></div>
+              </div>
+              <div id="growth-viewport" class="growth-viewport" role="region" aria-label="圈速曲线，支持横向滚动" tabindex="0">
+                <div id="growth-plot" class="growth-plot">
+                  <canvas id="growth-chart" role="img" aria-label="按录制顺序等距排列的最快圈和最快 5 圈平均，具体数值见下方录制明细"></canvas>
+                  <div id="growth-tooltip" class="growth-tooltip" role="tooltip" hidden></div>
+                </div>
+              </div>
+              <p id="growth-chart-note" class="info-note">横轴按录制顺序等距排布。悬停可查看准确时间、车型和圈时。<span id="growth-scroll-note" hidden> 可横向滚动查看其他录制。</span></p>
+              <p id="growth-chart-empty" class="info-note" role="status" hidden>绘制曲线需要已知赛道布局、录制时间和可统计圈时。</p>
+            </section>
+            <section class="archive-panel growth-details" aria-labelledby="growth-details-title">
+              <div class="archive-panel-heading"><h3 id="growth-details-title">录制明细</h3></div>
+              <div class="table-scroll"><table class="growth-table">
+                <thead><tr><th scope="col">录制时间</th><th scope="col">车型 / 车辆标识</th><th scope="col">会话类型</th>
+                  <th scope="col" class="growth-fastest">最快圈</th><th scope="col" class="growth-top5">最快 5 圈平均</th><th scope="col">统计圈</th></tr></thead>
+                <tbody id="growth-rows"></tbody>
+              </table></div>
+              <p class="info-note">统计有圈时且无已知进站状态的完整圈。少于 5 个统计圈时，最快 5 圈平均显示为「—」。</p>
+            </section>
           </div>
         </section>
       </div>

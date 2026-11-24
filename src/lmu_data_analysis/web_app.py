@@ -63,7 +63,7 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
         finally:
             await run_in_threadpool(directory_import.stop)
 
-    app = FastAPI(title="LMU Data Analysis", version="0.7.0-local", docs_url=None, redoc_url=None, lifespan=lifespan)
+    app = FastAPI(title="LMU Data Analysis", version="0.71.0-local", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.service = service
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 

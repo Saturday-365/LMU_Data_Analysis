@@ -23,7 +23,7 @@ function dateValue(value){
 }
 
 export function timestamp(session){return dateValue(session.metadata.RecordingTime);}
-export function norm(value){return (value || '').trim().toLowerCase();}
+function norm(value){return (value || '').trim().toLowerCase();}
 export function layoutKey(meta){
   if(!norm(meta.TrackName) || !norm(meta.TrackLayout)) return null;
   return JSON.stringify([norm(meta.TrackName), norm(meta.TrackLayout)]);
@@ -40,13 +40,13 @@ export function vehicleName(session){
 }
 function brandKey(session){return norm(session.vehicle_brand);}
 function classKey(session){return norm(session.metadata.CarClass);}
-export function vehicleKey(session){
+function vehicleKey(session){
   const category = norm(session.metadata.CarClass);
   if(session.vehicle_model) return JSON.stringify(['model', norm(session.vehicle_model), category]);
   if(session.metadata.CarName) return JSON.stringify(['entry', norm(session.metadata.CarName), category]);
   return session.id;
 }
-export function typeKey(session){
+function typeKey(session){
   const kind=norm(session.metadata.SessionType);
   return kind==='qualifying'?'qualify':kind || session.id;
 }
