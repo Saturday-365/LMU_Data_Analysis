@@ -94,13 +94,15 @@ export class SessionPace {
     this.referenceRequest++;
     this.session = session;
     this.a = this.b = this.compared = null;
+    this.loading = false;
     this.timelinePoints = [];
     $('pace-content').hidden = true;
     $('pace-status').textContent = '';
   }
 
   async load(){
-    if(!this.session) return;
+    if(!this.session || this.a || this.loading) return;
+    this.loading = true;
     const generation = ++this.request;
     this.referenceRequest++;
     const id = this.session.id;
@@ -128,7 +130,12 @@ export class SessionPace {
       $('pace-status').textContent = '';
       $('pace-content').hidden = false;
     }catch(error){
-      if(generation === this.request) $('pace-status').textContent = `读取失败：${error.message}。点击本页标签重试。`;
+      if(generation === this.request){
+        this.a = null;
+        $('pace-status').textContent = `读取失败：${error.message}。点击本页标签重试。`;
+      }
+    }finally{
+      if(generation === this.request) this.loading = false;
     }
   }
 

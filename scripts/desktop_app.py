@@ -21,7 +21,7 @@ if not getattr(sys, 'frozen', False):
 
 from lmu_data_analysis.web_app import create_app
 
-TITLE = 'LMU 个人遥测工作台 V0.51'
+TITLE = 'LMU 个人遥测工作台 V0.55'
 APP_DIR = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData' / 'Local') / 'LMU Data Analysis'
 
 

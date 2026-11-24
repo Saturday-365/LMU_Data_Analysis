@@ -40,7 +40,7 @@ export class TrajectoryMap {
     this.lines=traces.map(trace=>{const track=trace.trajectory;if(!track?.available)return [];const key=JSON.stringify(track.frame);if(frame!==null&&key!==frame)return [];frame=key;const points=track.points;for(const point of points){if(!valid(point))continue;this.hasData=true;this.bounds[0]=Math.min(this.bounds[0],point.x_m);this.bounds[1]=Math.min(this.bounds[1],point.y_m);this.bounds[2]=Math.max(this.bounds[2],point.x_m);this.bounds[3]=Math.max(this.bounds[3],point.y_m);}return points;});
     const missing=traces.map((t,i)=>this.lines[i].length?'':`${i?'参考圈':'当前圈'}：${t.trajectory?.reason||'走线不可用'}`).filter(Boolean);
     const rates=[...new Set(traces.filter((_,i)=>this.lines[i].length).map(t=>t.trajectory.frequency_hz))];
-    this.status.textContent=this.hasData?`${rates.join(' / ')} Hz 坐标 · 两圈共用原点${missing.length?' · '+missing.join('；'):''}${traces.some(t=>t.trajectory?.gap_count)?' · 存在坐标缺口':''}`:missing.join('；')||'选择完整圈后显示走线';
+    this.status.textContent=this.hasData?`${rates.join(' / ')} Hz 坐标${this.lines.filter(line=>line.length).length>1?' · 两圈共用原点':''}${missing.length?' · '+missing.join('；'):''}${traces.some(t=>t.trajectory?.gap_count)?' · 存在坐标缺口':''}`:missing.join('；')||'选择完整圈后显示走线';
     this.fit();
   }
   fit(){this.manuallyMoved=false;if(this.hasData){const [minX,minY,maxX,maxY]=this.bounds;this.center=[(minX+maxX)/2,(minY+maxY)/2];this.fitScale=Math.max(.001,Math.min(Math.max(1,this.root.clientWidth-64)/Math.max(1,maxX-minX),Math.max(1,this.root.clientHeight-64)/Math.max(1,maxY-minY)));this.scale=this.fitScale;}this.draw();}

@@ -10,18 +10,33 @@ import {PaceArchive, dateLabel, lapTime, layoutKey, sameGroup, trackName, typeLa
 const $ = id => document.getElementById(id);
 const state = {
   sessions: [], session: null, reference: null, traces: [], delta: null, axis: 'distance',
-  sessionRequest: 0, referenceRequest: 0, traceRequest: 0, importing: false, maxUpload: null,
+  importing: false, maxUpload: null, archiveScroll: 0,
 };
+const requests = {catalog:null, session:null, reference:null, trace:null};
+function abortRequests(...keys){
+  for(const key of keys){
+    requests[key]?.abort();
+    requests[key] = null;
+  }
+}
+function startRequest(key){
+  abortRequests(key);
+  return requests[key] = new AbortController();
+}
+function finishRequest(key, controller){
+  if(requests[key] === controller) requests[key] = null;
+}
 const charts = new TelemetryCharts($('charts'), $('cursor-position'));
 const trajectory = new TrajectoryMap($('trajectory-map'), $('trajectory-status'), $('trajectory-position'), $('trajectory-follow'));
 const insights = new SessionInsights(api, new SessionPace(api, selectSession));
-const conditions = new PracticeConditions(api, notice, trajectory);
+const conditions = new PracticeConditions(api, notice, trajectory, () => refreshSessions().catch(error => notice(error.message, true)));
 const archive = new PaceArchive(selectSession);
 const overview = new CircuitOverview(api,selectSession,session => archive.show('detail',session));
 const intervals = new IntervalReview(api, focusInterval, value => charts.setCursor(value), {
   prepare: () => {if(charts.axis !== 'distance'){state.axis = 'distance';setAxis();}},
   active: enabled => {charts.setMarking(enabled);trajectory.setMarking(enabled);},
   highlight: bounds => {charts.setSelection(bounds);trajectory.setSelection(bounds);},
+  reset: () => charts.reset(),
 });
 charts.onCursor = value => trajectory.setCursor(value);
 charts.onRangePreview = bounds => intervals.previewMark(bounds);
@@ -56,13 +71,20 @@ function renderSessions(){
   const list = $('sessions');
   list.replaceChildren();
   $('session-count').textContent = state.sessions.length;
-  if(!state.sessions.length){
+  const terms = $('session-search').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = state.sessions.filter(session => {
+    const {CarClass, SessionType, RecordingTime} = session.metadata;
+    const text = [trackName(session.metadata), vehicleName(session), session.vehicle_brand, CarClass,
+      SessionType, typeLabel(SessionType), RecordingTime, sessionDate(session), session.filename].join(' ').toLowerCase();
+    return terms.every(term => text.includes(term));
+  });
+  if(!matches.length){
     const note = document.createElement('p');
     note.className = 'session-empty';
-    note.textContent = '还没有会话记录。';
+    note.textContent = state.sessions.length ? '没有匹配的会话。' : '还没有会话记录。';
     list.append(note);
   }
-  for(const session of state.sessions){
+  for(const session of matches){
     const button = document.createElement('button');
     button.className = 'session-item';
     if(session.id === state.session?.id){
@@ -80,31 +102,46 @@ function renderSessions(){
 }
 
 async function refreshSessions(){
-  const data = await api('/sessions');
-  state.sessions = data.items;
-  $('export-laps').hidden = data.overview.totals.complete_laps === 0;
-  renderSessions();
-  archive.setSessions(state.sessions);
-  overview.setData(data.overview,archive.sessions);
+  const request = startRequest('catalog');
+  try{
+    const data = await api('/sessions', {signal:request.signal});
+    if(request.signal.aborted) return;
+    archive.setSessions(data.items);
+    state.sessions = archive.sessions;
+    $('export-laps').hidden = data.overview.totals.complete_laps === 0;
+    renderSessions();
+    overview.setData(data.overview,state.sessions);
+  }catch(error){
+    if(!request.signal.aborted) throw error;
+  }finally{
+    finishRequest('catalog', request);
+  }
 }
 
 function showArchive(){
-  intervals.clear();
+  const returning = $('archive').hidden;
+  abortRequests('session','reference','trace');
   state.session = null;
   state.reference = null;
-  state.sessionRequest++;
-  state.referenceRequest++;
-  state.traceRequest++;
+  clearCharts();
   insights.setSession(null);
   conditions.setSession(null);
   $('workspace').hidden = true;
+  $('workspace').inert = false;
   $('archive').hidden = false;
-  $('import-report').hidden = !$('import-results').childElementCount;
+  $('workspace-back').hidden = true;
+  $('navigation-status').textContent = '';
   $('page-label').textContent = '个人圈速';
   $('open-archive').classList.add('active');
   $('open-archive').setAttribute('aria-current', 'page');
-  archive.show('overview');
+  archive.show(archive.mode);
   renderSessions();
+  if(returning){
+    $('archive-title').focus({preventScroll:true});
+    requestAnimationFrame(() => {
+      if(!$('archive').hidden && !requests.session) window.scrollTo(0, state.archiveScroll);
+    });
+  }
 }
 
 function lapOption(lap){
@@ -114,7 +151,6 @@ function lapOption(lap){
 function renderSession(session, ordinal){
   $('archive').hidden = true;
   $('workspace').hidden = false;
-  $('import-report').hidden = true;
   $('open-archive').classList.remove('active');
   $('open-archive').removeAttribute('aria-current');
   $('page-label').textContent = '会话分析';
@@ -125,7 +161,11 @@ function renderSession(session, ordinal){
   $('lap-count').textContent = session.complete_lap_count;
   const fragments = session.segments.filter(segment => segment.kind !== 'complete').length;
   $('fragment-count').textContent = `另有 ${fragments} 个不完整片段`;
-  $('duration').textContent = `${Math.floor(session.duration_s / 60)}:${String(Math.floor(session.duration_s % 60)).padStart(2, '0')}`;
+  const duration = Math.floor(session.duration_s);
+  const hours = Math.floor(duration / 3600);
+  const minutes = String(Math.floor(duration / 60) % 60);
+  const seconds = String(duration % 60).padStart(2, '0');
+  $('duration').textContent = hours ? `${hours}:${minutes.padStart(2, '0')}:${seconds}` : `${minutes}:${seconds}`;
   $('recorded-date').textContent = dateLabel(session.metadata.RecordingTime);
   $('source-file').textContent = `原始文件：${session.filename}`;
   $('diagnostic-count').textContent = `${session.diagnostics.length} 条读取提示`;
@@ -137,7 +177,7 @@ function renderSession(session, ordinal){
   const current = $('lap-select');
   current.replaceChildren(...session.laps.map(lapOption));
   current.disabled = !session.laps.length;
-  const requested = session.laps.find(lap => lap.ordinal === ordinal);
+  const requested = session.laps.find(lap => lap.ordinal === (ordinal ?? session.pace.best_ordinal));
   if(requested) current.value = requested.id;
 
   const layout = layoutKey(session.metadata);
@@ -163,116 +203,169 @@ function populateReference(session, useBest){
 }
 
 async function selectSession(id, ordinal = null, view = null){
-  const generation = ++state.sessionRequest;
-  state.referenceRequest++;
-  state.traceRequest++;
-  clearCharts();
+  const fromArchive = !$('archive').hidden;
+  if(fromArchive) state.archiveScroll = window.scrollY;
+  abortRequests('reference','trace');
+  const request = startRequest('session');
+  $('workspace').inert = true;
+  $('workspace-back').hidden = false;
+  $('navigation-status').textContent = '正在打开会话…';
+  intervals.cancelMarking();
   insights.setSession(null);
   conditions.setSession(null);
-  $('charts').classList.add('loading');
   try{
-    const session = await api(`/sessions/${encodeURIComponent(id)}`);
-    if(generation !== state.sessionRequest) return;
+    const session = await api(`/sessions/${encodeURIComponent(id)}`, {signal:request.signal});
+    if(request.signal.aborted) return;
+    finishRequest('session', request);
     state.session = state.reference = session;
+    $('navigation-status').textContent = '';
+    $('workspace').inert = false;
     renderSession(session, ordinal);
     if(view || ordinal != null) insights.show(view || 'telemetry');
     insights.setSession(session);
     conditions.setSession(session);
-    await loadTraces();
+    window.scrollTo(0, 0);
+    $('track-name').focus({preventScroll:true});
+    loadTraces();
   }catch(error){
-    if(generation !== state.sessionRequest) return;
+    if(request.signal.aborted) return;
     showArchive();
     notice(error.message, true);
+  }finally{
+    finishRequest('session', request);
   }
 }
 
 async function changeReference(){
-  const sequence = ++state.referenceRequest;
-  state.traceRequest++;
   const current = state.session;
+  if(!current || requests.session) return;
   const id = $('reference-session').value;
+  abortRequests('trace');
+  const request = startRequest('reference');
   $('reference-select').replaceChildren(new Option('正在读取参考圈…', ''));
   $('reference-select').disabled = true;
-  $('charts').classList.add('loading');
+  $('reference-clear').disabled = false;
   clearCharts();
+  conditions.loadLaps([]);
+  setChartStatus('正在读取参考会话…', 'loading');
   try{
-    const reference = id === current.id ? current : await api(`/sessions/${encodeURIComponent(id)}`);
-    if(sequence !== state.referenceRequest) return;
+    const reference = id === current.id ? current
+      : await api(`/sessions/${encodeURIComponent(id)}`, {signal:request.signal});
+    if(request.signal.aborted) return;
     state.reference = reference;
     populateReference(reference, id !== current.id);
-    await loadTraces();
   }catch(error){
-    if(sequence !== state.referenceRequest) return;
+    if(request.signal.aborted) return;
     state.reference = current;
     $('reference-session').value = current.id;
     populateReference(current, false);
-    await loadTraces();
-    notice(error.message, true);
+    notice(`参考会话读取失败，已切回单圈。 ${error.message}`, true);
+  }finally{
+    finishRequest('reference', request);
   }
+  if(!request.signal.aborted) loadTraces();
 }
 
 function clearCharts(){
   state.traces = [];
   state.delta = null;
   intervals.clear();
-  $('axis-distance').disabled = true;
-  trajectory.setData([], state.axis);
-  charts.setData([], state.axis, null);
+  setAxis();
+}
+
+function setChartStatus(message, kind = ''){
+  const status = $('trace-status');
+  status.textContent = message;
+  status.dataset.kind = kind;
+  $('trace-retry').hidden = kind !== 'error';
+  $('charts').classList.toggle('loading', kind === 'loading');
+  $('driving-layout').setAttribute('aria-busy', String(kind === 'loading'));
+}
+
+function stepLap(step){
+  const select = $('lap-select');
+  const index = select.selectedIndex + step;
+  if(!state.session || requests.session || index < 0 || index >= select.options.length) return;
+  select.selectedIndex = index;
+  updateLapControls();
+  loadTraces();
+}
+
+function updateLapControls(){
+  const select = $('lap-select');
+  const reference = $('reference-select');
+  $('lap-previous').disabled = select.selectedIndex <= 0;
+  $('lap-next').disabled = select.selectedIndex < 0 || select.selectedIndex >= select.options.length - 1;
+  if(!requests.reference){
+    const isSameSession = state.session?.id === state.reference?.id;
+    for(const option of reference.options) option.disabled = isSameSession && option.value === select.value && option.value !== '';
+    if(isSameSession && reference.value === select.value) reference.value = '';
+  }
+  $('reference-clear').disabled = !requests.reference && !reference.value;
 }
 
 async function loadTraces(){
   const current = state.session;
-  if(!current) return;
-  const generation = ++state.traceRequest;
+  if(!current || requests.session || requests.reference) return;
+  const request = startRequest('trace');
+  updateLapControls();
   const reference = state.reference;
   const lap = $('lap-select').value;
   const refLap = $('reference-select').value;
-  $('charts').classList.add('loading');
   clearCharts();
 
   const chosen = lap ? [{session: current.id, lap}] : [];
   if(lap && refLap) chosen.push({session: reference.id, lap: refLap});
   conditions.loadLaps(chosen);
-  $('selection-note').textContent = !lap ? '未找到可展示的完整圈' : refLap
+  $('selection-note').textContent = !lap ? '' : refLap
     ? (current.id === reference.id ? '同会话双圈' : '跨会话双圈') : '单圈查看';
+  setChartStatus(lap ? '正在读取圈次数据…' : '此会话没有可展示的完整圈。', lap ? 'loading' : '');
   try{
     if(!lap) return;
     const path = `/sessions/${current.id}/laps/${lap}`;
     let traces, delta;
     if(refLap){
       const query = new URLSearchParams({reference_session_id: reference.id, reference_lap_id: refLap});
-      ({traces, delta} = await api(`${path}/comparison?${query}`));
+      ({traces, delta} = await api(`${path}/comparison?${query}`, {signal:request.signal}));
     }else{
-      traces = [await api(path + '/trace')];
+      traces = [await api(path + '/trace', {signal:request.signal})];
     }
-    if(generation !== state.traceRequest) return;
+    if(request.signal.aborted) return;
     state.traces = traces;
     state.delta = delta || null;
     setAxis();
     intervals.setComparison(current, traces, state.delta);
+    setChartStatus('');
   }catch(error){
-    if(generation === state.traceRequest) notice(error.message, true);
+    if(!request.signal.aborted) setChartStatus(`读取圈次失败。 ${error.message}`, 'error');
   }finally{
-    if(generation === state.traceRequest) $('charts').classList.remove('loading');
+    finishRequest('trace', request);
   }
 }
 
 function setAxis(){
-  const distanceAvailable = state.traces.length && state.traces.every(trace => trace.distance_available)
+  const hasTraces = state.traces.length > 0;
+  const hasTrajectory = state.traces.some(trace => trace.trajectory?.available);
+  const distanceAvailable = hasTraces && state.traces.every(trace => trace.distance_available)
     && state.delta?.comparable !== false;
   $('axis-distance').disabled = !distanceAvailable;
+  $('axis-time').disabled = $('reset-zoom').disabled = !hasTraces;
+  for(const key of ['trajectory-plus','trajectory-minus','trajectory-fit','trajectory-follow']) $(key).disabled = !hasTrajectory;
+  for(const label of document.querySelectorAll('.reference-legend')) label.hidden = state.traces.length < 2;
   const axis = distanceAvailable && state.axis === 'distance' ? 'distance' : 'time';
   $('axis-distance').setAttribute('aria-pressed', String(axis === 'distance'));
   $('axis-time').setAttribute('aria-pressed', String(axis === 'time'));
-  $('axis-note').textContent = axis === 'distance' ? '横轴：赛道距离（m）'
+  $('axis-note').textContent = !hasTraces ? '—' : axis === 'distance' ? '横轴：赛道距离（m）'
     : `横轴：圈内时间（s）${distanceAvailable ? '' : ' · 缺少可比距离'}`;
   trajectory.setData(state.traces, axis);
   charts.setData(state.traces, axis, state.delta);
 }
 
 function focusInterval(start,end){
-  state.axis = 'distance';
-  setAxis();
+  if(charts.axis !== 'distance'){
+    state.axis = 'distance';
+    setAxis();
+  }
   charts.setRange(start, end);
   charts.setCursor(end);
 }
@@ -313,7 +406,6 @@ async function importFiles(input){
     $('import-summary').textContent = `已导入 ${imported} 份 · 重复拒绝 ${duplicates} 份 · 已过滤 ${filtered} 份 · 失败 ${failures} 份`;
     $('import-report').open = duplicates + filtered + failures > 0;
     if(imported) await refreshSessions();
-    showArchive();
   }catch(error){
     notice(`已完成文件处理，刷新档案时出错：${error.message}`, true);
   }finally{
@@ -325,14 +417,26 @@ async function importFiles(input){
   }
 }
 
-$('open-archive').onclick = async () => {
+$('open-archive').onclick = $('workspace-back').onclick = async () => {
   showArchive();
   try{await refreshSessions();}catch(error){notice(error.message, true);}
+};
+$('session-search').oninput = renderSessions;
+$('lap-previous').onclick = () => stepLap(-1);
+$('lap-next').onclick = () => stepLap(1);
+$('trace-retry').onclick = loadTraces;
+$('reference-clear').onclick = () => {
+  abortRequests('reference');
+  if(!state.session || requests.session) return;
+  state.reference = state.session;
+  $('reference-session').value = state.session.id;
+  populateReference(state.session, false);
+  loadTraces();
 };
 $('trajectory-plus').onclick = () => {trajectory.disableFollow(); trajectory.zoom(1.5);};
 $('trajectory-minus').onclick = () => {trajectory.disableFollow(); trajectory.zoom(1 / 1.5);};
 $('trajectory-fit').onclick = () => {trajectory.disableFollow(); trajectory.fit();};
-$('lap-select').onchange = loadTraces;
+$('lap-select').onchange = () => {updateLapControls();loadTraces();};
 $('reference-select').onchange = loadTraces;
 $('reference-session').onchange = changeReference;
 $('axis-distance').onclick = () => {state.axis = 'distance'; setAxis();};

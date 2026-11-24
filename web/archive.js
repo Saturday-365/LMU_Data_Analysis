@@ -15,7 +15,9 @@ export function dateLabel(value){
 
 function dateValue(value){
   if(!value) return null;
-  const time = Date.parse(value.replace(/T(\d{2})_(\d{2})_(\d{2})Z$/, 'T$1:$2:$3Z'));
+  const iso = value.replaceAll('_', ':');
+  if(!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso)) return null;
+  const time = Date.parse(iso);
   return Number.isFinite(time) ? time : null;
 }
 
@@ -65,6 +67,7 @@ export class PaceArchive {
     this.onOpen = onOpen;
     this.sessions = [];
     this.visible = [];
+    this.mode = 'overview';
     this.layout = $('archive-layout');
     this.car = $('archive-car');
     this.category = $('archive-class');
@@ -83,6 +86,7 @@ export class PaceArchive {
   }
 
   show(mode,session){
+    this.mode = mode;
     for(const name of ['overview','detail']){
       $(`archive-${name}`).hidden = name !== mode;
       $(`archive-show-${name}`).setAttribute('aria-pressed', String(name === mode));
@@ -115,10 +119,10 @@ export class PaceArchive {
     bestButton.onclick = best ? () => this.onOpen(best.id, best.pace.best_ordinal) : null;
     $('archive-best-source').textContent = best ? `${dateLabel(best.metadata.RecordingTime)} · 第 ${best.pace.best_ordinal} 圈`
       : comparable ? '暂无可统计圈次' : '分组信息缺失';
-    const latest = trend.find(session => timestamp(session) != null);
+    const latest = trend.find(session => timestamp(session) != null && session.pace.median_s != null);
     $('archive-median').textContent = lapTime(latest?.pace.median_s);
     $('archive-median-source').textContent = latest ? dateLabel(latest.metadata.RecordingTime)
-      : comparable ? '录制时间未知' : '请检查品牌与组别';
+      : comparable ? '暂无带日期的统计圈时' : '请检查品牌与组别';
     $('archive-count').textContent = this.visible.reduce((count, session) => count + session.pace.count, 0);
     $('archive-session-count').textContent = `${this.visible.length} 次录制`;
     $('archive-rows').replaceChildren(...this.visible.map(session => this.row(session)));

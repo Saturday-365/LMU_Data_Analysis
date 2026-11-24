@@ -92,7 +92,7 @@ def validate_resource(resource, recording):
 
 def load_reference(root, key, recording):
     if key is None:
-        return unavailable('尚无经核验的本布局赛道数据；继续显示双圈走线。')
+        return unavailable('尚无经核验的本布局底图，当前显示遥测走线。')
     if not re.fullmatch(r'[a-zA-Z0-9_-]{1,80}', key):
         return unavailable('赛道资源标识无效')
     path = root / (key + '.json')

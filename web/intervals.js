@@ -22,12 +22,17 @@ export class IntervalReview {
     this.status = $('interval-library-status');
     this.markButton = $('interval-pick');
     this.markStatus = $('interval-pick-status');
+    this.clearButton = $('interval-clear');
+    this.reviewButton = $('interval-review');
     this.saveButton = $('interval-save');
     this.removeButton = $('interval-delete');
     this.library.onchange = () => this.select(this.library.value);
     this.saveButton.onclick = () => this.save();
     this.removeButton.onclick = () => this.remove();
     this.markButton.onclick = () => this.toggleMarking();
+    this.clearButton.onclick = () => this.resetForm();
+    this.reviewButton.onclick = () => $('interval-result').scrollIntoView({block:'center'});
+    for(const input of [this.start, this.end]) input.addEventListener('input', () => this.clearAnalysis());
     document.addEventListener('keydown',event => {
       if(event.key === 'Escape' && this.marking) this.cancelMarking();
     });
@@ -39,14 +44,11 @@ export class IntervalReview {
 
   clear(){
     this.context = null;
-    this.applied = null;
     this.presets = [];
     $('comparison-interval').hidden = true;
     this.status.textContent = '';
-    $('interval-result').textContent = '';
-    $('interval-metrics').hidden = true;
     this.markButton.disabled = true;
-    this.cancelMarking();
+    this.clearAnalysis();
   }
 
   setComparison(session,traces,delta){
@@ -67,12 +69,31 @@ export class IntervalReview {
 
   defaultBounds(){
     const distances = this.context.delta.distance_m;
-    this.start.value = Math.ceil(distances[0]);
-    this.end.value = Math.floor(distances.at(-1));
+    this.start.value = distances[0];
+    this.end.value = distances.at(-1);
+  }
+
+  clearAnalysis(){
+    this.applied = null;
+    $('interval-result').textContent = '';
+    $('interval-metrics').hidden = true;
+    this.clearButton.hidden = this.reviewButton.hidden = true;
+    this.cancelMarking();
+  }
+
+  resetForm(){
+    if(!this.context) return;
+    this.clearAnalysis();
+    this.library.value = '';
+    this.name.value = '';
+    this.status.textContent = '';
+    this.defaultBounds();
+    this.updateButtons(Boolean(this.context.busy));
+    this.selection.reset();
   }
 
   toggleMarking(){
-    if(!this.context) return;
+    if(!this.context || this.context.busy) return;
     if(this.marking){this.cancelMarking();return;}
     this.selection.prepare();
     this.marking = true;
@@ -81,6 +102,7 @@ export class IntervalReview {
     this.markButton.textContent = '取消标记';
     this.markStatus.textContent = '在曲线上拖选，或在曲线或走线上依次点击两端。';
     this.selection.active(true);
+    $('charts').focus({preventScroll:true});
   }
 
   cancelMarking(){
@@ -125,11 +147,20 @@ export class IntervalReview {
     }
     this.start.value = start;
     this.end.value = end;
+    this.library.value = '';
+    this.name.value = '';
+    this.status.textContent = '';
+    this.updateButtons(Boolean(this.context.busy));
     this.analyze();
     this.markStatus.textContent = `已标记 ${start.toFixed(2)}–${end.toFixed(2)} m`;
   }
 
   updateButtons(busy){
+    if(this.context) this.context.busy = busy;
+    if(busy) this.cancelMarking();
+    this.start.disabled = this.end.disabled = this.clearButton.disabled = busy;
+    $('interval-apply').disabled = busy;
+    this.markButton.disabled = busy || !this.context;
     this.library.disabled = busy || !this.context?.ready;
     this.name.disabled = this.saveButton.disabled = this.library.disabled;
     this.removeButton.disabled = this.library.disabled || !this.library.value;
@@ -160,6 +191,8 @@ export class IntervalReview {
       this.start.value = selected.start_m;
       this.end.value = selected.end_m;
       this.analyze();
+    }else{
+      this.resetForm();
     }
   }
 
@@ -171,6 +204,7 @@ export class IntervalReview {
 
   async save(){
     const context = this.context;
+    if(!context?.ready || context.busy) return;
     const bounds = this.bounds();
     const name = this.name.value.trim(), id = this.library.value;
     if(!bounds || !name || bounds[0] < 0){
@@ -196,6 +230,7 @@ export class IntervalReview {
 
   async remove(){
     const context = this.context, id = this.library.value;
+    if(!context?.ready || context.busy) return;
     const item = this.presets.find(preset => preset.id === id);
     if(!item || !window.confirm(`删除区间「${item.name}」？`)) return;
     this.updateButtons(true);
@@ -203,7 +238,7 @@ export class IntervalReview {
     try{
       await this.api(context.url + '/' + id, {method:'DELETE',headers:WRITE_HEADERS});
       if(this.context !== context) return;
-      this.name.value = '';
+      this.resetForm();
       this.status.textContent = '已删除区间。';
       await this.refresh(context);
     }catch(error){
@@ -214,16 +249,18 @@ export class IntervalReview {
   }
 
   analyze(){
-    if(!this.context) return;
+    if(!this.context || this.context.busy) return;
     const bounds = this.bounds(), result = $('interval-result');
     $('interval-metrics').hidden = true;
     if(!bounds){
+      this.clearAnalysis();
       result.textContent = '请输入共同覆盖范围内由小到大的距离。';
       return;
     }
     const [start,end] = bounds;
     const difference = intervalDelta(this.context.delta,start,end);
     this.applied = bounds;
+    this.clearButton.hidden = this.reviewButton.hidden = false;
     this.cancelMarking();
     this.focus(start,end);
     this.selection.highlight(bounds);

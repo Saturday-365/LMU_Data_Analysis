@@ -7,7 +7,7 @@ function node(tag,text,cls){const e=document.createElement(tag);if(text!=null)e.
 function valueText(data){if(data.state!=='known')return labels[data.state]||'未知';const v=data.value;const n=x=>new Intl.NumberFormat('zh-CN',{maximumFractionDigits:2}).format(x);return `${v&&typeof v==='object'?(v.min===v.max?n(v.min):`${n(v.min)}～${n(v.max)}`):v}${data.unit?' '+data.unit:''}`;}
 
 export class PracticeConditions {
-  constructor(api,notice,map){this.api=api;this.notice=notice;this.map=map;this.generation=0;this.editGeneration=0;this.lapGeneration=0;
+  constructor(api,notice,map,onCatalogChange){this.api=api;this.notice=notice;this.map=map;this.onCatalogChange=onCatalogChange;this.generation=0;this.editGeneration=0;this.lapGeneration=0;
     $('condition-scope').addEventListener('change',()=>this.loadEditor());
     $('condition-field').addEventListener('change',()=>this.populate());
     $('condition-state').addEventListener('change',()=>{this.input().disabled=$('condition-state').value!=='known';});
@@ -16,6 +16,7 @@ export class PracticeConditions {
   }
   input(){return this.field?.kind==='choice'?$('condition-choice'):$('condition-value');}
   async setSession(session){this.session=session;const generation=++this.generation;this.editGeneration++;this.lapGeneration++;this.document=null;this.lapIds=[];this.map.setReference(null);
+    $('condition-save').disabled=$('condition-scope').disabled=$('condition-field').disabled=false;
     $('condition-cards').replaceChildren();$('condition-summary').textContent='';$('lap-conditions').replaceChildren();$('track-layers').replaceChildren();$('track-reference-status').textContent='正在检查赛道参照…';$('condition-form').hidden=true;
     const scopes=$('condition-scope');scopes.replaceChildren(new Option('整场练习（变化信息明确适用于整场）','session'));
     if(!session){$('track-reference-status').textContent='';return;}
@@ -27,7 +28,7 @@ export class PracticeConditions {
     }catch(e){if(generation===this.generation)$('track-reference-status').textContent='赛道参照读取失败：'+e.message;}
   }
   async loadEditor(){if(!this.session)return;const generation=this.generation,edit=++this.editGeneration,id=this.session.id,scope=$('condition-scope').value;
-    $('condition-status').textContent='正在读取练习信息…';$('condition-form').hidden=true;
+    this.document=null;$('condition-status').textContent='正在读取练习信息…';$('condition-form').hidden=true;
     try{const data=await this.api(`/sessions/${id}/conditions${scope==='session'?'':'?lap_id='+scope}`);if(generation!==this.generation||edit!==this.editGeneration)return;
       this.document=data;this.render();$('condition-status').textContent='';if(scope==='session')this.summary(data);
     }catch(e){if(generation===this.generation&&edit===this.editGeneration){$('condition-status').textContent=e.message;$('condition-cards').replaceChildren();}}
@@ -40,7 +41,7 @@ export class PracticeConditions {
     $('car-name').textContent=[...vehicle,known('class')].filter(Boolean).join(' · ')||'未知车辆';
     $('track-name').textContent=trackName({TrackName:known('track'),TrackLayout:known('layout')});
     $('session-type').textContent=typeLabel(known('session_type'));
-    $('condition-summary').textContent=['ambient','track_temp','fuel','recorded_at'].map(key=>{
+    $('condition-summary').textContent=['ambient','track_temp','fuel'].map(key=>{
       const item=field(key);
       return `${item.label} ${valueText(item.effective)}${item.effective.source==='user'?'（补录）':''}`;
     }).join(' · ');
@@ -70,8 +71,13 @@ export class PracticeConditions {
     if(status!=='known')value=null;else if(this.field.kind==='number'){value=Number(value);if(!Number.isFinite(value)){this.notice('请输入有限数值。',true);return;}}
     $('condition-save').disabled=true;$('condition-restore').disabled=true;$('condition-scope').disabled=true;$('condition-field').disabled=true;
     try{const data=await this.api(`/sessions/${id}/conditions${scope==='session'?'':'?lap_id='+scope}`,{method:'PATCH',headers:{'Content-Type':'application/json','X-LMU-Client':'web'},body:JSON.stringify({changes:{[key]:restore?null:{state:status,value}}})});
+      if(scope==='session'&&['brand','model'].includes(key))this.onCatalogChange?.();
       if(generation!==this.generation||edit!==this.editGeneration)return;this.document=data;this.render();if(scope==='session')this.summary(data);this.loadLaps(this.lapIds||[]);this.notice(restore?'已移除此范围的补录，恢复继承或自动值。':'练习信息已保存。');
-    }catch(e){if(generation===this.generation)this.notice(e.message,true);}finally{$('condition-save').disabled=false;$('condition-scope').disabled=false;$('condition-field').disabled=false;if(generation===this.generation&&edit===this.editGeneration)this.populate();}
+    }catch(e){if(generation===this.generation&&edit===this.editGeneration)this.notice(e.message,true);}finally{
+      if(generation===this.generation&&edit===this.editGeneration){
+        $('condition-save').disabled=$('condition-scope').disabled=$('condition-field').disabled=false;this.populate();
+      }
+    }
   }
   async loadLaps(ids){this.lapIds=ids;const generation=this.generation,request=++this.lapGeneration;$('lap-conditions').replaceChildren();if(!this.session)return;
     try{const values=await Promise.all(ids.map(({session,lap})=>this.api(`/sessions/${session}/conditions?lap_id=${lap}`)));if(generation!==this.generation||request!==this.lapGeneration)return;

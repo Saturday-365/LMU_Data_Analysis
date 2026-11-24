@@ -9,25 +9,31 @@
   <link rel="stylesheet" href="/assets/archive.css">
   <link rel="stylesheet" href="/assets/overview.css">
   <link rel="stylesheet" href="/assets/pace.css">
+  <link rel="stylesheet" href="/assets/workspace.css">
   <script type="module" src="/assets/app.js"></script>
 </head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="LMU 遥测工作台首页"><span class="brand-mark">L/</span><span>LMU<span class="brand-sub">个人遥测工作台</span></span></a>
-    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.51</span></div>
+    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.55</span></div>
     <button id="open-archive" class="session-item archive-nav active" aria-current="page">个人圈速</button>
     <label id="dropzone" class="import-box" for="file-input"><span class="import-icon">＋</span><strong>批量导入遥测</strong><span>点击选择或拖入 .duckdb</span><small>至少 1 分钟 · 至少 1 个完整圈</small><small id="import-limit">文件保存在本机</small></label>
     <input id="file-input" class="sr-only" type="file" accept=".duckdb" multiple aria-label="选择遥测文件">
     <div class="section-label">会话记录 <span id="session-count">0</span></div>
+    <label class="session-search"><span class="sr-only">搜索会话记录</span><input id="session-search" type="search" placeholder="搜赛道、车辆或日期" autocomplete="off"></label>
     <nav id="sessions" aria-label="已导入的练习记录"></nav>
     <div class="sidebar-footer"><div class="avatar">D</div><div><strong id="driver-name">本地车手</strong><small>数据仅存储在这台电脑</small></div></div>
   </aside>
   <main>
-    <header class="topbar"><span>工作空间 <span class="slash">/</span> <strong id="page-label">个人圈速</strong></span><span class="local-badge"><span class="status-dot"></span> 仅本机</span></header>
+    <header class="topbar">
+      <div class="page-navigation"><button id="workspace-back" class="quiet" type="button" hidden>← 档案</button><strong id="page-label">个人圈速</strong></div>
+      <span id="navigation-status" role="status"></span>
+      <span class="local-badge"><span class="status-dot"></span> 仅本机</span>
+    </header>
     <details id="import-report" class="import-report" hidden><summary id="import-summary" aria-live="polite"></summary><ul id="import-results"></ul></details>
     <section id="archive" aria-labelledby="archive-title">
       <div class="session-heading">
-        <h1 id="archive-title">个人赛道档案</h1>
+        <h1 id="archive-title" tabindex="-1">个人赛道档案</h1>
         <a id="export-laps" class="archive-link archive-download" href="/api/v1/archive/laps.csv" download hidden>导出全部圈速 CSV</a>
       </div>
       <p id="archive-loading" class="view-status" role="status">正在读取本地档案…</p>
@@ -106,28 +112,39 @@
       </div>
     </section>
     <section id="workspace" hidden>
-      <div class="session-heading"><div><h1 id="track-name">—</h1><p id="car-name"></p></div><span id="session-type" class="outline-badge">练习</span></div>
+      <div class="session-heading"><div><h1 id="track-name" tabindex="-1">—</h1><p id="car-name"></p></div><span id="session-type" class="outline-badge">练习</span></div>
       <p id="condition-summary" class="condition-summary"></p>
       <nav class="view-navigation" aria-label="分析视图"><button data-view="telemetry" aria-pressed="true">驾驶曲线</button><button data-view="timing" aria-pressed="false">圈速总览</button><button data-view="pace" aria-pressed="false">节奏与调教</button><button data-view="inventory" aria-pressed="false">数据目录</button><button data-view="conditions" aria-pressed="false">练习信息</button></nav>
       <section id="view-telemetry">
       <div class="metrics"><div><span>最短记录圈</span><strong id="best-lap">—</strong><small>完整圈 · 有效性未核实</small></div><div><span>完整圈数</span><strong id="lap-count">—</strong><small id="fragment-count">—</small></div><div><span>录制时长</span><strong id="duration">—</strong><small id="recorded-date">—</small></div></div>
-      <div class="analysis-header"><div><h2>驾驶数据</h2><span id="selection-note">选择圈次进行分析</span></div><div class="legend"><span class="main-dot"></span> 当前圈 <span class="ref-dot"></span> 参考圈</div></div>
+      <div class="analysis-header"><div><h2>驾驶数据</h2><span id="selection-note"></span></div><div class="legend"><span><i class="main-dot"></i> 当前圈</span><span class="reference-legend" hidden><i class="ref-dot"></i> 参考圈</span></div></div>
       <div class="controls comparison-controls">
-        <label><span>当前圈</span><select id="lap-select" aria-label="当前圈"></select></label>
+        <div class="lap-control">
+          <label for="lap-select">当前圈</label>
+          <div class="lap-picker"><button id="lap-previous" class="quiet" type="button" aria-label="上一圈" title="上一圈" disabled>‹</button>
+            <select id="lap-select"></select>
+            <button id="lap-next" class="quiet" type="button" aria-label="下一圈" title="下一圈" disabled>›</button>
+          </div>
+        </div>
         <label><span>参考会话</span><select id="reference-session" aria-label="参考会话"></select></label>
         <label><span>参考圈</span><select id="reference-select" aria-label="参考圈"></select></label>
-        <div class="axis-switch" role="group" aria-label="横轴"><button id="axis-distance" aria-pressed="true">距离</button><button id="axis-time" aria-pressed="false">时间</button></div>
-        <button id="reset-zoom" class="quiet">重置视图 ↺</button>
+        <button id="reference-clear" class="quiet" type="button" disabled>关闭对比</button>
       </div>
       <div id="lap-conditions" class="lap-conditions" aria-live="polite"></div>
-      <div class="driving-layout"><div class="chart-stack">
-      <div class="chart-toolbar"><span id="cursor-position">移动鼠标查看数据</span>
-        <button id="interval-pick" type="button" aria-pressed="false" disabled>标记区间</button></div>
+      <div class="trace-feedback"><p id="trace-status" role="status"></p><button id="trace-retry" class="quiet" type="button" hidden>重试</button></div>
+      <div id="driving-layout" class="driving-layout"><div class="chart-stack">
+      <div class="chart-toolbar"><span id="cursor-position">移动鼠标查看数据</span><div class="chart-actions">
+        <div class="axis-switch" role="group" aria-label="横轴"><button id="axis-distance" type="button" aria-pressed="true" disabled>距离</button><button id="axis-time" type="button" aria-pressed="false" disabled>时间</button></div>
+        <button id="reset-zoom" class="quiet" type="button" disabled>全圈</button>
+        <button id="interval-pick" type="button" aria-pressed="false" disabled>标记区间</button>
+        <button id="interval-review" class="quiet" type="button" hidden>区间结果 ↓</button>
+        <button id="interval-clear" class="quiet" type="button" hidden>清除区间</button>
+      </div></div>
       <p id="interval-pick-status" class="interval-pick-status" role="status"></p>
       <div id="charts" class="charts" tabindex="0" role="group" aria-label="联动遥测曲线，左右方向键移动游标"></div>
       <div class="chart-footnote"><span id="axis-note">—</span><span>转向单位为 %，非方向盘角度</span></div>
       </div><section class="trajectory-panel" aria-label="走线对比">
-        <div class="trajectory-heading"><h2>走线对比</h2><div class="legend"><span class="main-dot"></span> 当前 <span class="ref-dot"></span> 参考</div></div>
+        <div class="trajectory-heading"><h2>走线</h2><div class="legend"><span><i class="main-dot"></i> 当前</span><span class="reference-legend" hidden><i class="ref-dot"></i> 参考</span></div></div>
         <div class="trajectory-controls"><label><input type="checkbox" id="trajectory-follow"> 跟随游标看弯道</label><div><button id="trajectory-minus" aria-label="缩小走线">−</button><button id="trajectory-plus" aria-label="放大走线">＋</button><button id="trajectory-fit" aria-label="显示全圈走线">全圈</button></div></div>
         <div id="track-layers" class="track-layers"></div><p id="track-reference-status" class="track-reference-status" role="status"></p>
         <div id="trajectory-map" class="trajectory-map" tabindex="0" role="group" aria-label="走线地图，可悬停联动曲线，滚轮缩放、拖动平移；方向键平移，加减键缩放，0 恢复全圈"><canvas></canvas><canvas></canvas></div>
@@ -146,7 +163,7 @@
           <form id="interval-form">
             <label>起点（m）<input id="interval-start" type="number" step="any" required></label>
             <label>终点（m）<input id="interval-end" type="number" step="any" required></label>
-            <button type="submit">查看区间</button>
+            <button id="interval-apply" type="submit">查看区间</button>
           </form>
           <p id="interval-result" role="status"></p>
           <div id="interval-metrics" hidden>
