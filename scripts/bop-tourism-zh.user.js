@@ -66,13 +66,46 @@
         'waiting on race data': '等待赛事数据',
         'weekly': '每周赛事',
         'weekly races': '每周赛事',
+        'daily races': '每日赛事',
+        'championship': '锦标赛',
+        'special events': '特殊赛事',
+        'race schedule': '赛事日程',
+        'schedule': '日程',
+        'lmu daily race schedule and weekly races': 'LMU 每日与每周赛事日程',
+        'times in': '显示时区',
+        'use my timezone': '使用我的时区',
+        'next start': '下一场开赛',
+        'picks': '选车推荐',
+        'qualifying tiers': '排位圈速分档',
+        'top-split class results only': '仅统计最高分组的组别成绩',
+        'full': '查看完整数据',
+        'src': '来源',
+        'win%': '胜率',
+        'pod%': '领奖台率',
         'this week': '本周',
         'next week': '下周',
         'previous week': '上周',
         'stats': '赛事统计',
         'race stats': '赛事统计',
+        'race data': '赛事数据',
+        'pick %': '选用率',
+        's1 win %': '最高分组胜率',
+        's1 podium %': '最高分组领奖台率',
+        's1 win / podium %': '最高分组胜率／领奖台率',
+        'win / podium % (all splits)': '所有分组胜率／领奖台率',
+        'races available': '可参赛场次',
+        'how to read this table': '表格阅读说明',
         'strength': '赛车实力',
         'car strength': '赛车实力',
+        'scope': '统计范围',
+        'all major tracks': '所有主要赛道',
+        'layout variants excluded.': '不计入赛道变体布局。',
+        'show circuits': '显示赛道',
+        'hide circuits': '隐藏赛道',
+        'score': '评分',
+        'avg gap': '平均差距',
+        'worst': '最大差距',
+        'lower score = stronger car. score = 60% avg gap + 40% worst gap across selected tracks.': '评分越低，赛车实力越强。评分按所选赛道的平均差距（60%）和最大差距（40%）计算。',
         'setups': '调校',
         'setup shops': '调校商店',
         'compare packs': '比较调校包',
@@ -260,6 +293,7 @@
         'hard': '硬胎',
         'wet': '雨胎',
         'medium tyre': '中性胎',
+        'medium tire': '中性胎',
         'pit': '进站',
         'in the pits': '维修区耗时',
         'pit lane': '维修区通道',
@@ -336,15 +370,19 @@
     const tierNames = 'Alien|Gold|Silver|Bronze|Rookie|Offline';
     const tierGap = new RegExp(`^([\\d.]+)\\s*s\\s+(to|inside|into)\\s+(${tierNames})$`, 'i');
     const tierDifference = new RegExp(`^([\\d.]+)\\s*s\\s+(ahead of|behind)\\s+(${tierNames})$`, 'i');
+    const groups = '(GT3|Hypercar|HY|LMP2|LMP3)';
     const formats = [
-        [/^(GT3|Hypercar|HY|LMP2|LMP3)\s+at\s+(.+)$/i, (_, group, track) => `${group} · ${trackName(track)}`],
-        [/^(GT3|Hypercar|HY|LMP2|LMP3)\s+·\s+(.+)$/i, (_, group, track) => `${group} · ${trackName(track)}`],
+        [new RegExp(`^${groups} (?:at|·) (.+)$`, 'i'), (_, group, track) => `${group} · ${trackName(track)}`],
+        [new RegExp(`^LMU ${groups} (race stats|car strength ranking)$`, 'i'),
+            (_, group, heading) => `LMU ${group} ${heading.toLowerCase() === 'race stats' ? '赛事统计' : '赛车实力排名'}`],
+        [new RegExp(`^${groups} [-—–] (fixed setup|open setup)$`, 'i'), (_, group, setup) => `${group} · ${label(setup)}`],
+        [new RegExp(`^${groups} [-—–] all (\\d+) tracks$`, 'i'), (_, group, count) => `${group} · 全部 ${count} 条赛道`],
         [/^(GT3|Hypercar|HY|LMP2|LMP3) (beginner|intermediate|advanced) (open|fixed)$/i,
             (_, group, rank, setup) => `${group} · ${label(rank)} · ${label(setup)}`],
         [/^(meta pick|safe pick|top pick|strong pick|form pick|pace pick|sleeper) (high|medium|low)$/i,
             (_, pick, confidence) => `${label(pick)} · 置信度${label(confidence)}`],
         [/^(?:under|less than) (\d+) min(?:utes?)?$/i, (_, minutes) => `少于 ${minutes} 分钟`],
-        [/^(\d+)\s*(?:to|–|–|-|—)\s*(\d+) min(?:utes?)?$/i, (_, low, high) => `${low}–${high} 分钟`],
+        [/^(\d+)\s*(?:to|–|-|—)\s*(\d+) min(?:utes?)?$/i, (_, low, high) => `${low}–${high} 分钟`],
         [/^(?:(\d+)\+ min(?:utes?)?|(?:over|more than) (\d+) min(?:utes?)?)$/i, (_, atLeast, over) =>
             atLeast ? `${atLeast} 分钟及以上` : `超过 ${over} 分钟`],
         [/^top\s*([\d.]+%)$/i, (_, percentile) => `前 ${percentile}`],
@@ -355,6 +393,18 @@
         [tierDifference, (_, seconds, direction, tier) =>
             `${direction.toLowerCase() === 'behind' ? '慢于' : '快于'}${label(tier)}门槛 ${seconds} 秒`],
         [/^show all (\d+)$/i, (_, count) => `显示全部 ${count} 项`],
+        [/^track (\d+)(?: (\*|\(optional\)))?$/i, (_, number, hint) =>
+            `赛道 ${number}${hint === '*' ? ' *' : hint ? '（可选）' : ''}`],
+        [/^all major tracks \((\d+) circuits\)$/i, (_, count) => `所有主要赛道（${count} 条）`],
+        [/^(\d+) cars · (\d+) with entries$/i, (_, total, entered) => `${total} 款车型，${entered} 款有参赛记录`],
+        [/^sr (gold|silver|bronze)$/i, (_, tier) => `SR ${label(tier)}`],
+        [/^(gold|silver|bronze) SR or higher to enter$/i, (_, tier) => `参赛要求：安全评级（SR）达到${label(tier)}或以上`],
+        [/^every (\d+) min, (\d+) min session with qualifying$/i,
+            (_, repeat, duration) => `每 ${repeat} 分钟开赛，赛程共 ${duration} 分钟（含排位）`],
+        [/^(\d+) starts? this week$/i, (_, count) => `本周开赛 ${count} 场`],
+        [/^(all|today's) start times \(([^)]+)\)$/i,
+            (_, scope, zone) => `${scope.toLowerCase() === 'all' ? '全部' : '今日'}开赛时间（${zone}）`],
+        [/^([\d,]+) drivers who qualified here$/i, (_, count) => `${count} 位车手在此跑出排位成绩`],
         [/^(\d+) cars?$/i, (_, count) => `${count} 款车型`],
         [/^(\d+) tracks?$/i, (_, count) => `${count} 条赛道`],
         [/^(\d+) laps?$/i, (_, count) => `${count} 圈`],
@@ -405,8 +455,9 @@
             const original = contextType.prototype[method];
             if (typeof original !== 'function') continue;
             try {
-                contextType.prototype[method] = function (value, ...args) {
-                    return Reflect.apply(original, this, [translateLabel(value), ...args]);
+                contextType.prototype[method] = function (...args) {
+                    if (args.length) args[0] = translateLabel(args[0]);
+                    return Reflect.apply(original, this, args);
                 };
             } catch {
                 // 浏览器禁止修改绘图方法时，仍继续处理普通页面和 SVG。
@@ -566,7 +617,8 @@
     function showTranslation(block, nodes, original, translation) {
         if (nodes.filter(node => node.data.trim()).length === 1) {
             const node = nodes.find(item => item.data.trim());
-            setText(node, original, translation);
+            const [, leading, , trailing] = node.data.match(/^(\s*)(.*?)(\s*)$/s);
+            setText(node, sourceOf(node), leading + translation + trailing);
         } else {
             // 含链接的段落显示对照译文，保留原有链接和样式。
             const note = document.createElement('span');
@@ -598,6 +650,10 @@
                     status.textContent = `正在下载本地模型… ${Math.round(loaded * 100)}%`;
                 });
             };
+            if (await api.availability(options) === 'unavailable') {
+                status.textContent = '当前浏览器未提供英语到简体中文的本地模型。';
+                return;
+            }
             session = await api.create(options);
             const main = document.querySelector('main,[role="main"]') ?? document.body;
             let done = 0;
@@ -607,9 +663,9 @@
                 const nodes = proseSource(block);
                 const original = nodes.map(sourceOf).join('').trim();
                 const displayed = nodes.map(node => node.data).join('').trim();
-                if (displayed !== original && !/[A-Za-z]{3,}\s+[a-z]{2,}/.test(displayed)) continue;
-                if (!/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(original)
-                    || original === proseTranslations.get(block)) continue;
+                if (original === proseTranslations.get(block)
+                    || !/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(displayed)
+                    || (block.matches('li,h1,h2,h3,h4,h5,h6') && original.split(/\s+/).length < 5)) continue;
                 const translated = await session.translate(original);
                 if (!block.isConnected || original !== proseSource(block).map(sourceOf).join('').trim()
                     || !translated || translated === original) continue;
