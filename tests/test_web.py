@@ -82,6 +82,44 @@ class WebTests(unittest.TestCase):
         me = self.client.get('/api/v1/me', headers={'x-driver-id':'someone-else'}).json()
         self.assertEqual(me['id'], LOCAL_DRIVER_ID)
 
+    def test_saved_intervals_stay_in_owner_and_layout_across_restart(self):
+        import duckdb
+
+        with duckdb.connect(str(self.source)) as connection:
+            connection.execute("INSERT INTO metadata VALUES ('TrackName', 'Synthetic test track')")
+        headers = {'x-lmu-client': 'web'}
+        with TestClient(create_app(self.data, identity=TestIdentity())) as client:
+            payload = self.source.read_bytes()
+            first = self.upload(client, content=payload).json()['session']['id']
+            outsider = self.upload(client, content=payload, **{'x-test-owner':'driver-b'}).json()['session']['id']
+            with duckdb.connect(str(self.source)) as connection:
+                connection.execute("INSERT INTO metadata VALUES ('CarName', 'Another vehicle')")
+            second = self.upload(client, content=self.source.read_bytes()).json()['session']['id']
+            with duckdb.connect(str(self.source)) as connection:
+                connection.execute("UPDATE metadata SET value='Other layout' WHERE key='TrackLayout'")
+            other_layout = self.upload(client, content=self.source.read_bytes()).json()['session']['id']
+            url = f'/api/v1/sessions/{first}/intervals'
+            response = client.post(url, json={'name':' 第一弯 ', 'start_m':21, 'end_m':53.5}, headers=headers)
+            self.assertEqual(response.status_code, 201, response.text)
+            saved = response.json()
+            self.assertEqual(saved['name'], '第一弯')
+            item_url = f'/api/v1/sessions/{second}/intervals'
+            self.assertEqual(client.get(item_url).json()['items'], [saved])
+            self.assertEqual(client.get(f'/api/v1/sessions/{other_layout}/intervals').json()['items'], [])
+            foreign = f'/api/v1/sessions/{outsider}/intervals'
+            self.assertEqual(client.get(url, headers={'x-test-owner':'driver-b'}).status_code, 404)
+            self.assertEqual(client.delete(f"{foreign}/{saved['id']}", headers={
+                **headers, 'x-test-owner':'driver-b'}).status_code, 404)
+            self.assertEqual(client.post(url, json={'name':'第一弯','start_m':22,'end_m':36}, headers=headers).status_code, 409)
+            self.assertEqual(client.post(url, json={'name':'无效','start_m':40,'end_m':30}, headers=headers).status_code, 422)
+            changed = client.put(f"{item_url}/{saved['id']}",
+                                 json={'name':'第一弯入口','start_m':26,'end_m':36}, headers=headers)
+            self.assertEqual(changed.status_code, 200, changed.text)
+        with TestClient(create_app(self.data, identity=TestIdentity())) as restarted:
+            self.assertEqual(restarted.get(url).json()['items'], [changed.json()])
+            self.assertEqual(restarted.delete(f"{url}/{saved['id']}", headers=headers).status_code, 200)
+            self.assertEqual(restarted.get(item_url).json()['items'], [])
+
     def test_archive_pace_and_manual_vehicle_model(self):
         session = self.upload().json()['session']
         base = f"/api/v1/sessions/{session['id']}"

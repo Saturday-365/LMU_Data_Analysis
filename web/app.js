@@ -3,6 +3,7 @@ import {SessionInsights} from './insights.js';
 import {TrajectoryMap} from './trajectory.js';
 import {PracticeConditions} from './conditions.js';
 import {SessionPace} from './pace.js';
+import {IntervalReview} from './intervals.js';
 import {PaceArchive, dateLabel, lapTime, layoutKey, sameGroup, trackName, typeLabel, vehicleName} from './archive.js';
 
 const $ = id => document.getElementById(id);
@@ -15,7 +16,11 @@ const trajectory = new TrajectoryMap($('trajectory-map'), $('trajectory-status')
 const insights = new SessionInsights(api, new SessionPace(api, selectSession));
 const conditions = new PracticeConditions(api, notice, trajectory);
 const archive = new PaceArchive(selectSession);
-charts.onCursor = value => trajectory.setCursor(value);
+const intervals = new IntervalReview(api, focusInterval, value => charts.setCursor(value));
+charts.onCursor = value => {
+  trajectory.setCursor(value);
+  intervals.recordCursor(value, charts.axis);
+};
 trajectory.onCursor = value => charts.setCursor(value);
 
 let noticeTimer;
@@ -196,7 +201,7 @@ async function changeReference(){
 function clearCharts(){
   state.traces = [];
   state.delta = null;
-  $('comparison-interval').hidden = true;
+  intervals.clear();
   $('axis-distance').disabled = true;
   trajectory.setData([], state.axis);
   charts.setData([], state.axis, null);
@@ -231,7 +236,7 @@ async function loadTraces(){
     state.traces = traces;
     state.delta = delta || null;
     setAxis();
-    resetInterval();
+    intervals.setComparison(current, traces, state.delta);
   }catch(error){
     if(generation === state.traceRequest) notice(error.message, true);
   }finally{
@@ -252,49 +257,11 @@ function setAxis(){
   charts.setData(state.traces, axis, state.delta);
 }
 
-function resetInterval(){
-  const delta = state.delta;
-  $('comparison-interval').hidden = !delta;
-  $('interval-form').hidden = !delta?.values;
-  $('delta-description').textContent = delta?.reason || '';
-  $('interval-result').textContent = '';
-  if(!delta?.values) return;
-  $('interval-start').value = Math.ceil(delta.distance_m[0]);
-  $('interval-end').value = Math.floor(delta.distance_m.at(-1));
-}
-
-function pointAt(delta, distance){
-  const x = delta.distance_m, y = delta.values;
-  const right = x.findIndex(value => value >= distance);
-  if(right < 0 || distance < x[0]) return null;
-  if(x[right] === distance) return y[right];
-  if(y[right - 1] == null || y[right] == null) return null;
-  const fraction = (distance - x[right - 1]) / (x[right] - x[right - 1]);
-  return y[right - 1] + (y[right] - y[right - 1]) * fraction;
-}
-
-function focusInterval(event){
-  event.preventDefault();
-  const delta = state.delta;
-  if(!delta?.values) return;
-  const start = $('interval-start').valueAsNumber, end = $('interval-end').valueAsNumber;
-  if(!(start < end) || start < delta.distance_m[0] || end > delta.distance_m.at(-1)){
-    $('interval-result').textContent = '请输入共同覆盖范围内由小到大的距离。';
-    return;
-  }
-  const first = pointAt(delta, start), last = pointAt(delta, end);
-  const gap = delta.distance_m.some((distance, i) => distance > start && distance < end && delta.values[i] == null);
+function focusInterval(start,end){
   state.axis = 'distance';
   setAxis();
   charts.setRange(start, end);
   charts.setCursor(end);
-  if(first == null || last == null || gap){
-    $('interval-result').textContent = '区间包含未能对齐的样点，无法计算区间得失。';
-    return;
-  }
-  const difference = last - first;
-  $('interval-result').textContent = Math.abs(difference) < .0005 ? '该区间两圈节奏相同（精确到毫秒）。'
-    : `当前圈在该区间${difference > 0 ? '丢失' : '追回'} ${Math.abs(difference).toFixed(3)} 秒。`;
 }
 
 async function importFiles(input){
@@ -357,7 +324,6 @@ $('reference-session').onchange = changeReference;
 $('axis-distance').onclick = () => {state.axis = 'distance'; setAxis();};
 $('axis-time').onclick = () => {state.axis = 'time'; setAxis();};
 $('reset-zoom').onclick = () => charts.reset();
-$('interval-form').onsubmit = focusInterval;
 $('file-input').onchange = event => importFiles(event.target.files);
 $('empty-import').onclick = () => $('file-input').click();
 for(const event of ['dragenter','dragover']) $('dropzone').addEventListener(event, e => {

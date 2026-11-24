@@ -8,7 +8,7 @@
 
 ## 启动网页
 
-Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.2.exe`。桌面版 V0.2 加入连续驾驶段、圈速分布和调教 A/B 对照。运行及构建方法见 [桌面版 V0.2](docs/desktop-v0.2.md)。
+Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.3.exe`。V0.3 加入区间库和刹车点、最低速度、回油点的双圈复盘。运行及构建方法见 [桌面版 V0.3](docs/desktop-v0.3.md)。
 
 双击根目录 `start-web.cmd`，再打开 **http://127.0.0.1:8765**。首次安装和操作说明见 [网页使用说明](docs/web-usage.md)。
 

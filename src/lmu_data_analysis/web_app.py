@@ -8,10 +8,12 @@ from urllib.parse import unquote, urlsplit
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.gzip import GZipMiddleware
 
 from .models import TelemetryError
+from .comparison import layout_key
 from .storage import LocalBlobStore, SQLiteSessionRepository
 from .web_service import TelemetryService, public_session
 
@@ -29,6 +31,13 @@ class LocalIdentity:
         return LOCAL_DRIVER_ID
 
 
+class IntervalInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    name: str = Field(min_length=1, max_length=80)
+    start_m: FiniteFloat = Field(ge=0, strict=True)
+    end_m: FiniteFloat = Field(gt=0, strict=True)
+
+
 def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, blobs=None,
                max_upload_bytes=256*1024*1024):
     directory = Path(data_dir or ROOT / "data")
@@ -36,7 +45,7 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
     blobs = blobs or LocalBlobStore(directory / "recordings")
     identity = identity or LocalIdentity()
     service = TelemetryService(repository, blobs, directory / 'track-resources')
-    app = FastAPI(title="LMU Data Analysis", version="0.2.0-local", docs_url=None, redoc_url=None)
+    app = FastAPI(title="LMU Data Analysis", version="0.3.0-local", docs_url=None, redoc_url=None)
     app.state.service = service
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -79,6 +88,47 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
         if row is None:
             raise HTTPException(404, "练习记录不存在")
         return public_session(row, True)
+
+    def interval_scope(session_id, request):
+        owner = driver(request)['id']
+        session = repository.get_session(owner, session_id)
+        if session is None:
+            raise HTTPException(404, '录制会话不存在')
+        layout = layout_key(session['summary']['metadata'])
+        if not all(layout):
+            raise HTTPException(422, '录制缺少已知赛道布局，无法使用区间库。')
+        return owner, layout
+
+    @app.get('/api/v1/sessions/{session_id}/intervals')
+    def intervals(session_id: str, request: Request):
+        return {'items': repository.list_intervals(*interval_scope(session_id, request))}
+
+    def write_interval(session_id, payload, request, interval_id=None):
+        owner, layout = interval_scope(session_id, request)
+        if payload.start_m >= payload.end_m:
+            raise HTTPException(422, '区间终点应大于起点。')
+        try:
+            return repository.save_interval(owner, layout, payload.model_dump(), interval_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        except sqlite3.IntegrityError as error:
+            raise HTTPException(409, '该赛道布局已有同名区间。') from error
+
+    @app.post('/api/v1/sessions/{session_id}/intervals', status_code=201)
+    def create_interval(session_id: str, payload: IntervalInput, request: Request):
+        return write_interval(session_id, payload, request)
+
+    @app.put('/api/v1/sessions/{session_id}/intervals/{interval_id}')
+    def update_interval(session_id: str, interval_id: str, payload: IntervalInput, request: Request):
+        return write_interval(session_id, payload, request, interval_id)
+
+    @app.delete('/api/v1/sessions/{session_id}/intervals/{interval_id}')
+    def remove_interval(session_id: str, interval_id: str, request: Request):
+        try:
+            repository.delete_interval(*interval_scope(session_id, request), interval_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        return {'deleted': True}
 
     @app.post("/api/v1/sessions", status_code=201)
     async def import_session(request: Request):

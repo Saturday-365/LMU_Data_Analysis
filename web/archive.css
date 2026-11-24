@@ -128,6 +128,16 @@
   color: #e1cbff;
   font-size: 11px;
 }
+.comparison-interval form > div > button { margin-top: 4px; }
+.interval-library { display: grid; gap: 6px; margin-bottom: 10px; }
+.interval-library input, .interval-library select { width: 100%; max-width: none; }
+.interval-actions { display: flex; gap: 6px; }
+#interval-library-status { margin: 0; }
+#interval-library-status:empty { display: none; }
+.interval-metric-table th, .interval-metric-table td { padding: 6px 4px; font-size: 10px; }
+.interval-metric-table td small { margin: 0; white-space: normal; }
+.interval-metric-table button { padding: 3px 4px; white-space: nowrap; }
+.interval-metric-table th { color: #b3bec9; }
 .delta-row .chart-values { color: #c6a5f7; }
 
 @media(max-width: 760px) {

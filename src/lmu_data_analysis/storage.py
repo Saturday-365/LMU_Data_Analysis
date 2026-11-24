@@ -17,6 +17,10 @@ class SessionRepository(Protocol):
     def list_sessions(self, driver_id: str) -> list[dict]: ...
     def get_session(self, driver_id: str, session_id: str) -> dict | None: ...
     def find_hash(self, driver_id: str, sha256: str) -> dict | None: ...
+    def list_intervals(self, driver_id: str, layout: tuple[str, str]) -> list[dict]: ...
+    def save_interval(self, driver_id: str, layout: tuple[str, str], values: dict,
+                      interval_id: str | None = None) -> dict: ...
+    def delete_interval(self, driver_id: str, layout: tuple[str, str], interval_id: str) -> None: ...
     def insert_session(self, driver_id: str, session_id: str, blob_key: str,
                        filename: str, summary: dict) -> dict: ...
 
@@ -91,6 +95,17 @@ class SQLiteSessionRepository:
                 c.execute('CREATE TABLE track_references(session_id TEXT PRIMARY KEY REFERENCES sessions(id), '
                           'resource_key TEXT NOT NULL)')
                 c.execute('PRAGMA user_version=2')
+            # 区间库是独立的附加表，旧版仍可使用同一份会话目录。
+            c.execute("""CREATE TABLE IF NOT EXISTS analysis_intervals (
+                id TEXT PRIMARY KEY,
+                driver_id TEXT NOT NULL REFERENCES drivers(id),
+                track_name TEXT NOT NULL,
+                track_layout TEXT NOT NULL,
+                name TEXT NOT NULL COLLATE NOCASE,
+                start_m REAL NOT NULL,
+                end_m REAL NOT NULL CHECK (start_m >= 0 AND start_m < end_m),
+                UNIQUE(driver_id, track_name, track_layout, name)
+            )""")
 
     @contextmanager
     def connection(self):
@@ -138,6 +153,37 @@ class SQLiteSessionRepository:
         with self.connection() as c:
             row = c.execute('SELECT resource_key FROM track_references WHERE session_id=?', (session_id,)).fetchone()
             return row[0] if row else None
+
+    def list_intervals(self, driver_id, layout):
+        with self.connection() as c:
+            return [dict(row) for row in c.execute(
+                'SELECT id, name, start_m, end_m FROM analysis_intervals '
+                'WHERE driver_id=? AND track_name=? AND track_layout=? ORDER BY start_m,end_m,name',
+                (driver_id, *layout))]
+
+    def save_interval(self, driver_id, layout, values, interval_id=None):
+        parameters = (values['name'], values['start_m'], values['end_m'])
+        with self.connection() as c:
+            if interval_id is None:
+                row = c.execute(
+                    'INSERT INTO analysis_intervals VALUES (?,?,?,?,?,?,?) RETURNING id,name,start_m,end_m',
+                    (str(uuid4()), driver_id, *layout, *parameters)).fetchone()
+            else:
+                row = c.execute(
+                    'UPDATE analysis_intervals SET name=?,start_m=?,end_m=? '
+                    'WHERE driver_id=? AND track_name=? AND track_layout=? AND id=? RETURNING id,name,start_m,end_m',
+                    (*parameters, driver_id, *layout, interval_id)).fetchone()
+            if row is None:
+                raise LookupError('区间不存在')
+            return dict(row)
+
+    def delete_interval(self, driver_id, layout, interval_id):
+        with self.connection() as c:
+            deleted = c.execute(
+                'DELETE FROM analysis_intervals WHERE driver_id=? AND track_name=? AND track_layout=? AND id=?',
+                (driver_id, *layout, interval_id))
+            if not deleted.rowcount:
+                raise LookupError('区间不存在')
 
     @staticmethod
     def _decode(row):
