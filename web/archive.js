@@ -19,7 +19,7 @@ function dateValue(value){
   return Number.isFinite(time) ? time : null;
 }
 
-function timestamp(session){return dateValue(session.metadata.RecordingTime);}
+export function timestamp(session){return dateValue(session.metadata.RecordingTime);}
 function norm(value){return (value || '').trim().toLowerCase();}
 export function layoutKey(meta){
   if(!norm(meta.TrackName) || !norm(meta.TrackLayout)) return null;
@@ -73,15 +73,12 @@ export class PaceArchive {
     for(const input of [this.layout, this.car, this.category, this.type]) input.addEventListener('change', () => this.render());
     $('archive-show-overview').onclick = () => this.show('overview');
     $('archive-show-detail').onclick = () => this.show('detail');
-    $('overview-type').onchange = () => this.renderOverview();
     new ResizeObserver(() => this.draw()).observe(this.canvas);
   }
 
-  setSessions(sessions,overview){
+  setSessions(sessions){
     this.sessions = [...sessions].sort((a,b) => (timestamp(b) ?? -Infinity) - (timestamp(a) ?? -Infinity)
       || b.created_at.localeCompare(a.created_at));
-    this.overview = overview;
-    this.renderOverview();
     this.render();
   }
 
@@ -91,81 +88,6 @@ export class PaceArchive {
       $(`archive-show-${name}`).setAttribute('aria-pressed', String(name === mode));
     }
     if(mode === 'detail') this.render(session);
-  }
-
-  renderOverview(){
-    if(!this.overview) return;
-    const {totals,layouts} = this.overview;
-    for(const [field,value] of Object.entries(totals)){
-      $(`overview-${field.replace('_','-')}`).textContent = value.toLocaleString('zh-CN');
-    }
-    const kind = $('overview-type').value;
-    const root = $('overview-tracks');
-    root.replaceChildren();
-    for(const layout of layouts){
-      const groups = layout.groups.filter(group => !kind || group.kind === kind);
-      if(!groups.length) continue;
-      const card = document.createElement('article');
-      card.className = 'track-overview';
-      const header = document.createElement('header');
-      const title = document.createElement('h3');
-      title.textContent = trackName(layout.metadata);
-      const stats = document.createElement('p');
-      const displayed = field => groups.reduce((sum,group) => sum + group[field], 0);
-      stats.textContent = `${displayed('sessions')} 次录制 · ${displayed('complete_laps')} 个完整圈 · ${displayed('pace_laps')} 圈计入节奏`;
-      const date = document.createElement('small');
-      date.textContent = layout.latest_at ? `最近录制 ${dateLabel(layout.latest_at)}` : '录制时间未知';
-      header.append(title,stats,date);
-      card.append(header,this.overviewTable(groups));
-      root.append(card);
-    }
-    if(!root.childElementCount){
-      const note = document.createElement('p');
-      note.className = 'info-note';
-      note.textContent = '没有该会话类型的录制。';
-      root.append(note);
-    }
-  }
-
-  overviewTable(groups){
-    const wrap = document.createElement('div');
-    wrap.className = 'table-scroll';
-    const table = document.createElement('table');
-    table.className = 'overview-table';
-    const head = table.createTHead().insertRow();
-    for(const label of ['类型','品牌','组别','会话','完整圈','统计圈','最快圈','中位圈','P10–P90']){
-      const cell = document.createElement('th');
-      cell.scope = 'col';
-      cell.textContent = label;
-      head.append(cell);
-    }
-    const body = table.createTBody();
-    for(const group of groups){
-      const row = body.insertRow();
-      row.insertCell().textContent = typeLabel(group.kind);
-      const brand = document.createElement('button');
-      brand.className = 'overview-brand';
-      brand.textContent = group.brand || '未识别品牌';
-      brand.title = '查看该品牌与会话类型的录制';
-      brand.onclick = () => this.show('detail',this.sessions.find(session => session.id === group.session_id));
-      row.insertCell().append(brand);
-      for(const value of [group.class || '—',group.sessions,group.complete_laps,group.pace_laps]){
-        row.insertCell().textContent = value;
-      }
-      const best = row.insertCell();
-      if(group.best_session){
-        const link = document.createElement('button');
-        link.className = 'overview-best';
-        link.textContent = lapTime(group.pace.best_s);
-        link.title = '打开最快圈';
-        link.onclick = () => this.onOpen(group.best_session,group.best_ordinal);
-        best.append(link);
-      }else best.textContent = '—';
-      row.insertCell().textContent = lapTime(group.pace.median_s);
-      row.insertCell().textContent = group.pace.p10_s == null ? '—' : `${lapTime(group.pace.p10_s)} – ${lapTime(group.pace.p90_s)}`;
-    }
-    wrap.append(table);
-    return wrap;
   }
 
   render(anchor){

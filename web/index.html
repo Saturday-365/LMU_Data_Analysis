@@ -7,13 +7,14 @@
   <link rel="stylesheet" href="/assets/trajectory.css">
   <link rel="stylesheet" href="/assets/conditions.css">
   <link rel="stylesheet" href="/assets/archive.css">
+  <link rel="stylesheet" href="/assets/overview.css">
   <link rel="stylesheet" href="/assets/pace.css">
   <script type="module" src="/assets/app.js"></script>
 </head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="LMU 遥测工作台首页"><span class="brand-mark">L/</span><span>LMU<span class="brand-sub">个人遥测工作台</span></span></a>
-    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.4</span></div>
+    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.45</span></div>
     <button id="open-archive" class="session-item archive-nav active" aria-current="page">个人圈速</button>
     <label id="dropzone" class="import-box" for="file-input"><span class="import-icon">＋</span><strong>批量导入遥测</strong><span>点击选择或拖入 .duckdb</span><small id="import-limit">文件保存在本机</small></label>
     <input id="file-input" class="sr-only" type="file" accept=".duckdb" multiple aria-label="选择遥测文件">
@@ -25,7 +26,7 @@
     <header class="topbar"><span>工作空间 <span class="slash">/</span> <strong id="page-label">个人圈速</strong></span><span class="local-badge"><span class="status-dot"></span> 仅本机</span></header>
     <details id="import-report" class="import-report" hidden><summary id="import-summary" aria-live="polite"></summary><ul id="import-results"></ul></details>
     <section id="archive" aria-labelledby="archive-title">
-      <div class="session-heading"><h1 id="archive-title">个人圈速</h1></div>
+      <div class="session-heading"><h1 id="archive-title">个人赛道档案</h1></div>
       <p id="archive-loading" class="view-status" role="status">正在读取本地档案…</p>
       <div id="archive-empty" class="archive-panel archive-empty" hidden>
         <h2>还没有遥测记录</h2><p>导入 LMU 的原生遥测文件，建立你的个人圈速档案。</p>
@@ -43,11 +44,37 @@
             <div><span>完整圈</span><strong id="overview-complete-laps">—</strong></div>
             <div><span>纳入节奏统计</span><strong id="overview-pace-laps">—</strong></div>
           </div>
-          <div class="overview-heading"><h2>各赛道圈速</h2>
-            <label>会话类型 <select id="overview-type"><option value="">全部</option><option value="race">正赛</option><option value="qualify">排位</option><option value="practice">练习</option><option value="warmup">热身</option></select></label>
+          <div class="overview-recordings">
+            <section id="overview-latest" class="overview-card latest-race" aria-labelledby="latest-title" hidden>
+              <header class="overview-panel-header">
+                <div><h2 id="latest-title">最近一场正赛</h2><h3 id="latest-track"></h3><p id="latest-context"></p></div>
+                <button id="latest-open" class="archive-link" type="button">打开会话</button>
+              </header>
+              <dl id="latest-facts" class="latest-facts"></dl>
+              <p id="latest-status" class="info-note" role="status"></p>
+              <div id="latest-stints" hidden>
+                <div id="latest-timeline" class="latest-timeline" role="img"></div>
+                <div class="latest-legend"><span>驾驶段</span><span>已观测进站</span><span>未划分</span></div>
+                <div class="table-scroll"><table class="latest-table">
+                  <thead><tr><th scope="col">驾驶段</th><th scope="col">统计圈</th><th scope="col">最快圈</th><th scope="col">中位圈</th><th scope="col">段末</th></tr></thead>
+                  <tbody id="latest-stint-rows"></tbody>
+                </table></div>
+              </div>
+              <section id="latest-spread" class="latest-spread" hidden aria-label="圈速分布">
+                <h3>圈速分布</h3><canvas id="latest-chart" role="img"></canvas>
+                <p class="info-note">竖线为中位圈，色带为 P10–P90，两端为最快和最慢圈。</p>
+              </section>
+            </section>
+            <section class="overview-card recent-recordings" aria-labelledby="recent-title">
+              <h2 id="recent-title">最近录制</h2>
+              <div id="recent-recordings"></div>
+            </section>
+          </div>
+          <div class="overview-heading"><h2>按赛道查看成绩</h2>
+            <label>跳转至赛道 <select id="overview-track"><option value="">选择赛道</option></select></label>
           </div>
           <div id="overview-tracks"></div>
-          <p class="info-note">圈速按布局、会话类型、组别与品牌汇总。中位圈和 P10–P90 由参与统计的原始圈时计算。分组信息缺失时记录圈数。点击品牌可查看历史趋势。</p>
+          <p class="info-note">圈速按布局、会话类型、组别与品牌汇总。正赛分档使用遥测录制时长，分布来自纳入统计的单圈。</p>
         </section>
         <div id="archive-detail" hidden>
         <div class="controls archive-filters">

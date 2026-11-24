@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMU BoP Tourism 简体中文
 // @namespace    lmu-data-analysis
-// @version      0.1.0
+// @version      0.2.0
 // @description  汉化 LMU BoP Tourism 界面、成绩、图表及正文
 // @match        https://bop-tourism.com/*
 // @match        https://www.bop-tourism.com/*
@@ -228,8 +228,10 @@
         'race length': '正赛时长',
         'qualifying': '排位赛',
         'quali': '排位赛',
+        'qual': '排位名次',
         'qualifying best': '排位最佳圈',
         'best quali': '排位最佳圈',
+        'best qual': '排位最佳圈',
         'best qualifying lap': '排位最佳圈',
         'race pace': '正赛节奏',
         'race median': '正赛圈速中位数',
@@ -260,6 +262,7 @@
         'full results': '完整成绩',
         'split': '分组',
         'split winner': '分组冠军',
+        'class winner': '组别冠军',
         'ahead of you': '在你前一位',
         'you': '你',
         'level': '持平',
@@ -267,6 +270,9 @@
         'see my personal bests': '查看我的最佳成绩',
         'your le mans ultimate personal best laps': '你在 LMU 的个人最佳圈速',
         'your driver profile': '你的车手档案',
+        'lmu driver profile': 'LMU 车手档案',
+        'personal bests and race analysis': '个人最佳成绩与正赛分析',
+        'your personal bests and your last race': '你的个人最佳成绩与最近一场正赛',
         'driver rating': '车手评级',
         'safety rating': '安全评级',
         'personal best': '个人最佳',
@@ -282,6 +288,11 @@
         'lap spread, stint by stint': '各赛段圈速分布',
         'lap time spread': '圈速分布',
         'lap time spread by stint': '各赛段圈速分布',
+        'lap time spread, stint by stint': '各赛段圈速分布',
+        'fastest clean lap': '最快有效圈',
+        'slowest clean lap': '最慢有效圈',
+        '10th percentile': '第 10 百分位',
+        '90th percentile': '第 90 百分位',
         'stint': '赛段',
         'stints': '赛段',
         'clean': '有效圈',
@@ -346,6 +357,7 @@
         'circuit paul ricard': '保罗·里卡尔赛道',
         'circuit de barcelona': '巴塞罗那赛道',
         'circuit de spa-francorchamps': '斯帕-弗朗科尔尚赛道',
+        'spa-francorchamps': '斯帕-弗朗科尔尚赛道',
         'circuit de la sarthe (le mans)': '萨尔特赛道（勒芒）',
         'circuit de la sarthe mulsanne (le mans mulsanne)': '萨尔特赛道（穆尔桑布局）',
         'daytona international speedway': '代托纳国际赛道',
@@ -368,6 +380,12 @@
         'silverstone national': '银石国家布局',
     }));
     const tierNames = 'Alien|Gold|Silver|Bronze|Rookie|Offline';
+    const tyreNames = { soft: '软胎', medium: '中性胎', hard: '硬胎', wet: '雨胎' };
+    const tyreName = name => tyreNames[name.toLowerCase()];
+    const chartMetrics = [
+        'best(?: lap)?', 'fastest(?: clean)? lap', 'slowest(?: clean)? lap',
+        'median(?: lap(?: time)?)?', '10th percentile', '90th percentile', 'clean laps?', 'pit time',
+    ].join('|');
     const tierGap = new RegExp(`^([\\d.]+)\\s*s\\s+(to|inside|into)\\s+(${tierNames})$`, 'i');
     const tierDifference = new RegExp(`^([\\d.]+)\\s*s\\s+(ahead of|behind)\\s+(${tierNames})$`, 'i');
     const groups = '(GT3|Hypercar|HY|LMP2|LMP3)';
@@ -386,6 +404,8 @@
         [/^(?:(\d+)\+ min(?:utes?)?|(?:over|more than) (\d+) min(?:utes?)?)$/i, (_, atLeast, over) =>
             atLeast ? `${atLeast} 分钟及以上` : `超过 ${over} 分钟`],
         [/^top\s*([\d.]+%)$/i, (_, percentile) => `前 ${percentile}`],
+        [new RegExp(`^(${tierNames})\\s*top\\s*([\\d.]+%)$`, 'i'),
+            (_, tier, percentile) => `${label(tier)} · 前 ${percentile}`],
         [/^([\d.]+)\s+pts?\s+(ahead|back|behind)$/i, (_, points, direction) =>
             `${direction.toLowerCase() === 'ahead' ? '领先' : '落后'} ${points} 个百分点`],
         [tierGap, (_, seconds, direction, tier) =>
@@ -410,6 +430,20 @@
         [/^(\d+) laps?$/i, (_, count) => `${count} 圈`],
         [/^split (\d+)$/i, (_, split) => `第 ${split} 分组`],
         [/^stint (\d+)$/i, (_, stint) => `第 ${stint} 赛段`],
+        [/^([+-]?[\d.]+\s+)?(gold|silver|bronze)\s*(\d+)$/i,
+            (_, change = '', tier, rank) => `${change}${label(tier)} ${rank}`],
+        [/^([\d.]+)\s*s over (\d+) stops?$/i,
+            (_, seconds, count) => `耗时 ${seconds} 秒，共进站 ${count} 次`],
+        [/^(\d+) laps? · ([\d.]+)\s*s in the pits$/i,
+            (_, laps, seconds) => `${laps} 圈 · 维修区耗时 ${seconds} 秒`],
+        [/^([\d.]+)\s*s in the pits$/i, (_, seconds) => `维修区耗时 ${seconds} 秒`],
+        [/^(you|driver [0-9a-f]{4})\s*·\s*(P\d+)$/i,
+            (_, driver, position) => `${translateLabel(driver)} · ${position}`],
+        [new RegExp(`^(${chartMetrics}):\\s*([+−-]?[\\d][\\d:.]*(?:s|%)?|[—–-])$`, 'i'),
+            (_, metric, value) => `${label(metric)}：${value.replace(/s$/i, ' 秒')}`],
+        [/^(soft|medium|hard|wet) new$/i, (_, tyre) => `新${tyreName(tyre)}`],
+        [/^lap time spread, stint by stint\s*(\d+) charted$/i,
+            (_, count) => `各赛段圈速分布 · 图中展示 ${count} 个赛段`],
         [/^driver ([0-9a-f]{4})$/i, (_, id) => `车手 ${id}`],
         [/^(last raced|updated|last updated)\s*:?\s+(.+)$/i, (_, caption, date) => `${label(caption)} ${date}`],
         [/^(current version|latest bop patch|current patch):\s*(\S.*)$/i,
@@ -475,7 +509,25 @@
     ].join(',');
     const attributes = ['title', 'aria-label', 'placeholder', 'label'];
     const attributeSelector = attributes.map(name => `[${name}]`).join(',');
+    const inlineMarkup = 'abbr,b,em,i,mark,small,span,strong,sub,sup,tspan,wbr';
+    const inlineContainers = `${inlineMarkup},a,button,dd,div,h1,h2,h3,h4,h5,h6,label,p,summary,td,text,th,[role="tooltip"]`;
+    const inlineRules = [
+        [/^(?:((?:Alien|Gold|Silver|Bronze|Rookie|Offline)\s*))?(Top\s*)\d+(?:\.\d+)?\s*%$/di,
+            [tier => `${label(tier.trim())} · `, () => '前 ']],
+        [/^\d+(?:\.\d+)?(\s*s\s*to\s*)(Alien|Gold|Silver|Bronze|Rookie|Offline)$/di,
+            [() => ' 秒（距', tier => `${label(tier)}门槛）`]],
+        [/^\d+(?:\.\d+)?(\s*pts?\s*)(ahead|back|behind)$/di,
+            [() => ' 个百分点', direction => direction.toLowerCase() === 'ahead' ? '（领先）' : '（落后）']],
+        [/^(Fixed|Open)(\s*)(Setup)$/di,
+            [mode => mode.toLowerCase() === 'fixed' ? '固定' : '开放', () => '', () => '调校']],
+        [/^\d+(\s*laps?\s*·\s*)\d+(?:\.\d+)?(\s*s\s*in the pits)$/di,
+            [() => ' 圈 · ', () => ' 秒（维修区）']],
+        [/^(?:[+-]\d+(?:\.\d+)?\s*)?(Gold|Silver|Bronze)(\s*)\d+$/di,
+            [label, () => ' ']],
+    ];
     const originalText = new WeakMap();
+    const inlineEdits = new WeakMap();
+    const inlineOwner = new WeakMap();
     const optionValues = new WeakMap();
     const queued = new Set();
     let frame = 0;
@@ -487,7 +539,11 @@
 
     function setText(node, original, translated) {
         if (node.data === translated) return;
-        originalText.set(node, { original, translated });
+        if (original === translated) {
+            originalText.delete(node);
+        } else {
+            originalText.set(node, { original, translated });
+        }
         node.data = translated;
     }
 
@@ -500,9 +556,99 @@
         for (let node = iterator.nextNode(); node; node = iterator.nextNode()) action(node);
     }
 
+    function collectInline(element, candidates) {
+        for (; element; element = element.parentElement) {
+            if (candidates.has(element)) break;
+            if (inlineEdits.has(element) || (element.childNodes.length > 1 && element.matches(inlineContainers))) {
+                candidates.add(element);
+            }
+            if (!element.matches(inlineMarkup)) break;
+        }
+    }
+
+    function inlineRanges(text) {
+        for (const [pattern, replacements] of inlineRules) {
+            const match = pattern.exec(text.trim());
+            if (!match) continue;
+            const offset = text.length - text.trimStart().length;
+            return replacements.flatMap((replacement, index) => {
+                const range = match.indices[index + 1];
+                if (!range) return [];
+                const [start, end] = range;
+                return [{ start: start + offset, end: end + offset, value: replacement(match[index + 1]) }];
+            });
+        }
+        return [];
+    }
+
+    function inlineChanges(element) {
+        const changes = new Map();
+        if (element.textContent.length > 120 || element.closest(`${skipSelector},option`)
+            || element.querySelector(`:not(${inlineMarkup}),${skipSelector}`)) return changes;
+
+        const parts = [];
+        let text = '';
+        visitText(element, node => {
+            const original = sourceOf(node);
+            if (!original) return;
+            parts.push({ node, original, start: text.length });
+            text += original;
+        });
+        if (parts.filter(part => part.original.trim()).length < 2) return changes;
+
+        const ranges = inlineRanges(text).reverse();
+        // 只替换命中的单词，数字所在的节点、强调样式和外层控件继续由网站维护。
+        for (const { node, original, start } of parts) {
+            let translated = original;
+            for (const range of ranges) {
+                const from = Math.max(0, range.start - start);
+                const to = Math.min(original.length, range.end - start);
+                if (from < to || (from === to && range.start === range.end && from < original.length)) {
+                    const value = range.start >= start ? range.value : '';
+                    translated = translated.slice(0, from) + value + translated.slice(to);
+                }
+            }
+            if (translated !== original) changes.set(node, { original, translated });
+        }
+        return changes;
+    }
+
+    function translateInline(element) {
+        const changes = inlineChanges(element);
+        for (const node of changes.keys()) {
+            const owner = inlineOwner.get(node);
+            if (owner && owner !== element && owner.contains(node)) return;
+        }
+
+        for (const node of inlineEdits.get(element) ?? []) {
+            if (changes.has(node) || inlineOwner.get(node) !== element) continue;
+            inlineOwner.delete(node);
+            const original = sourceOf(node);
+            setText(node, original, original);
+            translateText(node);
+        }
+        if (changes.size) {
+            inlineEdits.set(element, [...changes.keys()]);
+        } else {
+            inlineEdits.delete(element);
+        }
+        for (const [node, { original, translated }] of changes) {
+            inlineOwner.set(node, element);
+            setText(node, original, translated);
+        }
+    }
+
     function translateText(node) {
         const parent = node.parentElement;
-        if (!parent || parent.closest(skipSelector) || originalText.get(node)?.translated === node.data) return;
+        if (!parent || parent.closest(skipSelector)) return;
+        const owner = inlineOwner.get(node);
+        if (owner?.contains(node)) return;
+        if (owner) {
+            inlineOwner.delete(node);
+            const original = sourceOf(node);
+            setText(node, original, original);
+        }
+        if (originalText.get(node)?.translated === node.data) return;
 
         const original = node.data;
         const result = translateLabel(original, parent);
@@ -525,13 +671,29 @@
         if (element.closest(skipSelector) && !element.matches('input:not([type="hidden"])')) return;
         for (const attribute of attributes) {
             const value = element.getAttribute(attribute);
-            const result = translateLabel(value, element);
+            // 原生悬浮提示可能用多行显示圈速统计。
+            const result = attribute === 'title' && value?.includes('\n')
+                ? value.split('\n').map(line => translateLabel(line, element)).join('\n')
+                : translateLabel(value, element);
             if (result !== value) element.setAttribute(attribute, result);
         }
     }
 
     function scan(root) {
         if (!root.isConnected || root.parentElement?.closest(skipSelector)) return;
+        const candidates = new Set();
+        collectInline(root.nodeType === Node.ELEMENT_NODE ? root : root.parentElement, candidates);
+        visitText(root, node => collectInline(node.parentElement, candidates));
+        // 先处理内层标签，再补译外层标签中尚未翻译的词。
+        const insideFirst = [...candidates].sort((a, b) => {
+            const position = a.compareDocumentPosition(b);
+            if (position & Node.DOCUMENT_POSITION_CONTAINED_BY) return 1;
+            if (position & Node.DOCUMENT_POSITION_CONTAINS) return -1;
+            return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+        });
+        for (const element of insideFirst) {
+            translateInline(element);
+        }
         visitText(root, translateText);
         if (root.nodeType !== Node.ELEMENT_NODE) return;
         translateAttributes(root);
@@ -565,6 +727,12 @@
                 if (originalText.get(node)?.translated !== node.data) schedule(node);
             } else {
                 mutation.addedNodes.forEach(schedule);
+                if (mutation.removedNodes.length) {
+                    for (let element = mutation.target; element; element = element.parentElement) {
+                        if (inlineEdits.has(element)) schedule(element);
+                        if (!element.matches(inlineMarkup)) break;
+                    }
+                }
             }
         }
     }

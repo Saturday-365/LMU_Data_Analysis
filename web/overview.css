@@ -1,0 +1,154 @@
+.overview-recordings {
+  display: grid;
+  grid-template-columns: minmax(0,1.85fr) minmax(280px,1fr);
+  align-items: start;
+  gap: 14px;
+  margin-top: 20px;
+}
+.overview-card {
+  min-width: 0;
+  border: 1px solid #35414b;
+  background: #171d23;
+  border-radius: 9px;
+  padding: 16px 18px;
+}
+.latest-race { border-top: 2px solid #73bdc8; }
+.overview-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.overview-panel-header h2, .recent-recordings h2 {
+  color: #a8c3ce;
+  font-size: 12px;
+  font-weight: 600;
+  display: block;
+  margin: 0 0 10px;
+}
+.overview-panel-header h3 {
+  margin: 5px 0;
+  font-size: 22px;
+  line-height: 1.25;
+}
+.overview-panel-header p { font-size: 11px; color: #a4b0bc; margin: 7px 0 0; }
+.overview-panel-header button { flex-shrink: 0; }
+.latest-facts {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  margin: 16px 0;
+  padding: 12px 0;
+  border-block: 1px solid #35414b;
+}
+.latest-facts > div + div { padding-left: 12px; border-left: 1px solid #35414b; }
+.latest-facts dt { color: #a1adb9; font-size: 10px; }
+.latest-facts dd {
+  margin: 6px 0 0;
+  font: 600 18px Bahnschrift, monospace;
+  font-variant-numeric: tabular-nums;
+  color: #eaf1f6;
+  white-space: nowrap;
+}
+.latest-facts > div:nth-child(2) dd { color: #9bdee1; }
+.latest-timeline {
+  position: relative;
+  height: 10px;
+  background: #2e3944;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.latest-timeline span { position: absolute; inset-block: 0; }
+.latest-legend { display: flex; gap: 13px; margin: 8px 0 12px; color: #adb9c4; font-size: 10px; }
+.latest-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 5px;
+  border-radius: 2px;
+  margin-right: 4px;
+  background: #79cfd6;
+}
+.latest-legend span:nth-child(2)::before { background: #97a2ad; }
+.latest-legend span:nth-child(3)::before { background: #2e3944; }
+.latest-table { min-width: 330px; }
+.latest-table th, .latest-table td { white-space: nowrap; padding: 6px 9px; font-size: 11px; }
+.latest-spread { margin-top: 13px; }
+.latest-spread h3 { margin: 0 0 5px; font-size: 12px; }
+#latest-chart { display: block; width: 100%; height: 90px; }
+.latest-spread .info-note { margin: 4px 0 0; }
+.recent-card {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  text-align: left;
+  gap: 8px;
+  background: #1d252d;
+  border: 1px solid #34404a;
+  border-radius: 5px;
+  margin: 0 0 6px;
+  padding: 9px;
+}
+.recent-card:last-child { margin-bottom: 0; }
+.recent-card:hover { background: #263440; border-color: #597487; }
+.recent-card-label { min-width: 0; }
+.recent-card strong, .recent-card small { display: block; }
+.recent-card strong { font-size: 11px; line-height: 1.4; }
+.recent-card small { font-size: 10px; color: #9eafbc; margin-top: 3px; line-height: 1.45; }
+.recent-card-facts { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.recent-card-facts strong { font-size: 13px; color: #9cd8e0; }
+.overview-circuit {
+  scroll-margin-top: 15px;
+  border: 1px solid #3a454e;
+  border-top: 2px solid #8aafbd;
+  background: #171d23;
+}
+.overview-circuit header { padding: 14px 15px; border-bottom: 1px solid #35414b; }
+.circuit-results {
+  display: grid;
+  grid-template-columns: minmax(255px, 1fr) minmax(0, 1.7fr);
+  gap: 14px;
+  padding: 12px;
+  align-items: start;
+}
+.circuit-results h4 { margin: 0 0 8px; font-size: 12px; color: #dce6ed; }
+.circuit-results > :only-child, .circuit-other { grid-column: 1 / -1; }
+.circuit-results .table-scroll { border: 1px solid #343f48; border-radius: 4px; }
+.circuit-results .overview-table { min-width: 0; }
+.circuit-results .overview-table :is(td,th) { padding: 7px; font-size: 10px; }
+.circuit-results .overview-race td:nth-child(3), .circuit-results .overview-qualify td:nth-child(3) { color: #9cdbe0; }
+.circuit-results .overview-table td:nth-last-child(2) { color: var(--text); }
+.race-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+.race-header h4 { margin: 0; }
+.race-lengths { display: flex; align-items: center; flex-wrap: wrap; gap: 3px; }
+.race-lengths button {
+  padding: 3px 5px;
+  border: 1px solid #3c5361;
+  border-radius: 4px;
+  background: #202c35;
+  color: #b0ccda;
+  white-space: nowrap;
+  font-size: 9px;
+}
+.race-lengths button[aria-pressed=true] { background: #2d4e5c; color: #edfaff; border-color: #6a97a6; }
+.circuit-other summary { color: #a8bbc9; font-size: 11px; cursor: pointer; padding: 3px 0; }
+.circuit-other[open] summary { margin-bottom: 7px; }
+
+@media(max-width: 1080px){
+  .overview-recordings, .circuit-results { grid-template-columns: minmax(0,1fr); }
+  #recent-recordings { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+  .recent-card { margin: 0; }
+}
+@media(max-width: 760px){
+  .overview-card { padding: 12px; }
+  #recent-recordings { grid-template-columns: minmax(0,1fr); }
+  .overview-panel-header h3 { font-size: 17px; }
+  .latest-facts { grid-template-columns: repeat(2, minmax(0,1fr)); row-gap: 10px; }
+  .latest-facts > div:nth-child(3) { border: none; padding: 0; }
+}

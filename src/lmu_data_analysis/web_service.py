@@ -215,6 +215,49 @@ def overview_totals(items):
             'pace_laps': sum(item['pace']['count'] for item in items)}
 
 
+def session_kind(metadata):
+    kind = normalized(metadata.get('SessionType'))
+    return 'qualify' if kind == 'qualifying' else kind
+
+
+def overview_breakdown(records):
+    groups = defaultdict(list)
+    for row, item in records:
+        metadata = item['metadata']
+        groups[(normalized(item['vehicle_brand']), normalized(metadata.get('CarClass')),
+                session_kind(metadata))].append((row, item))
+    breakdown = []
+    for (brand, category, kind), members in groups.items():
+        items = [item for _, item in members]
+        sample = items[0]
+        # 只从合并后的单圈计时计算节奏，缺少分组的记录计入圈数。
+        comparable = bool(brand and category and kind)
+        timed = [item for item in items if item['pace']['best_s'] is not None] if comparable else []
+        fastest = min(timed, key=lambda item: item['pace']['best_s'], default=None)
+        laps = [{'time_s': lap['lap_time_s'], 'ordinal': lap['complete_lap_number']}
+                for row, _ in members for lap in pace_laps(row['summary'])] if comparable else []
+        breakdown.append({'session_id': sample['id'], 'kind': kind, 'brand': sample['vehicle_brand'],
+                          'class': sample['metadata'].get('CarClass'), **overview_totals(items),
+                          'pace': distribution(laps),
+                          'best_session': fastest['id'] if fastest else None,
+                          'best_ordinal': fastest['pace']['best_ordinal'] if fastest else None})
+    return sorted(breakdown, key=lambda group: (
+        {'race':0, 'qualify':1, 'practice':2, 'warmup':3}.get(group['kind'], 4),
+        group['class'] or '', group['brand'] or '\uffff'))
+
+
+RACE_DURATIONS = (('short', 20 * 60), ('medium', 40 * 60), ('long', 60 * 60), ('endurance', float('inf')))
+
+
+def race_duration_groups(records):
+    buckets = defaultdict(list)
+    for row, item in records:
+        if session_kind(item['metadata']) == 'race' and item['duration_s'] > 0:
+            key = next(key for key, end in RACE_DURATIONS if item['duration_s'] < end)
+            buckets[key].append((row, item))
+    return {key: overview_breakdown(group) for key, group in buckets.items()}
+
+
 def catalog_overview(rows):
     items = [public_session(row) for row in rows]
     layouts = defaultdict(list)
@@ -227,33 +270,8 @@ def catalog_overview(rows):
     for records in layouts.values():
         session_items = [item for _, item in records]
         latest = max(session_items, key=lambda item: recording_date(item) or datetime.min.replace(tzinfo=timezone.utc))
-        groups = defaultdict(list)
-        for row, item in records:
-            metadata = item['metadata']
-            kind = normalized(metadata.get('SessionType'))
-            if kind == 'qualifying':
-                kind = 'qualify'
-            groups[(normalized(item['vehicle_brand']), normalized(metadata.get('CarClass')), kind)].append((row, item))
-        breakdown = []
-        for (brand, category, kind), members in groups.items():
-            result_items = [item for _, item in members]
-            sample = result_items[0]
-            # 未知组保留圈数，避免将可能来自不同车辆或会话类型的圈时混为节奏。
-            comparable = bool(brand and category and kind)
-            timed = [item for item in result_items if item['pace']['best_s'] is not None] if comparable else []
-            fastest = min(timed, key=lambda item: item['pace']['best_s'], default=None)
-            # 节奏用合并后的圈时计算，各会话的中位数不参与二次平均。
-            laps = [{'time_s': lap['lap_time_s'], 'ordinal': lap['complete_lap_number']}
-                    for row, _ in members for lap in pace_laps(row['summary'])] if comparable else []
-            breakdown.append({'session_id': sample['id'], 'kind': kind, 'brand': sample['vehicle_brand'],
-                              'class': sample['metadata'].get('CarClass'), **overview_totals(result_items),
-                              'pace': distribution(laps),
-                              'best_session': fastest['id'] if fastest else None,
-                              'best_ordinal': fastest['pace']['best_ordinal'] if fastest else None})
         cards.append({'session_id': latest['id'], 'metadata': latest['metadata'], **overview_totals(session_items),
                       'latest_at': latest['metadata'].get('RecordingTime') if recording_date(latest) else None,
-                      'groups': sorted(breakdown, key=lambda group: (
-                          {'race':0,'qualify':1,'practice':2,'warmup':3}.get(group['kind'],4),
-                          group['class'] or '', group['brand'] or '\uffff'))})
+                      'groups': overview_breakdown(records), 'race_durations': race_duration_groups(records)})
     cards.sort(key=lambda item: recording_date(item) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return {'items': items, 'overview': {'totals': {**overview_totals(items), 'layouts': len(cards)}, 'layouts': cards}}

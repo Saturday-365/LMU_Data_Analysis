@@ -8,7 +8,7 @@
 
 ## 启动网页
 
-Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.4.exe`。V0.4 加入赛道总览、品牌分类和直接在图上标记区间。运行及构建方法见 [桌面版 V0.4](docs/desktop-v0.4.md)。
+Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.45.exe`。V0.45 首页展示最近一场正赛的驾驶段、近期录制及按赛道整理的排位与正赛表现。运行及构建方法见 [桌面版 V0.45](docs/desktop-v0.45.md)。
 
 双击根目录 `start-web.cmd`，再打开 **http://127.0.0.1:8765**。首次安装和操作说明见 [网页使用说明](docs/web-usage.md)。
 

@@ -7,13 +7,13 @@ from lmu_data_analysis.vehicles import vehicle_brand
 from lmu_data_analysis.web_service import catalog_overview
 
 
-def record(name, laps, *, layout='Monza', kind='Race', entry='Garage 59 2026 #10:LM'):
+def record(name, laps, *, layout='Monza', kind='Race', entry='Garage 59 2026 #10:LM', duration=500):
     return {'id': name, 'driver_id': 'local', 'created_at': '2026-11-24T00:00Z', 'filename': name + '.duckdb',
             'summary': {'metadata': {'TrackName': 'Monza', 'TrackLayout': layout, 'CarName': entry, 'CarClass': 'GT3',
                                      'SessionType': kind, 'RecordingTime':'2026-11-20T12_30_05Z'},
                         'complete_laps': [{'complete_lap_number': i, 'lap_time_s': t, 'contains_pit_state': pit}
                                           for i, (t, pit) in enumerate(laps, 1)],
-                        'recording_start_s': 0, 'recording_end_s': 500}}
+                        'recording_start_s': 0, 'recording_end_s': duration}}
 
 
 class OverviewTests(unittest.TestCase):
@@ -44,3 +44,14 @@ class OverviewTests(unittest.TestCase):
         self.assertEqual((race['best_session'], race['best_ordinal']), ('first',1))
         self.assertIsNotNone(race['pace']['p10_s'])
         self.assertEqual(qual['pace']['median_s'],100)
+
+    def test_race_duration_buckets_use_recording_duration_and_keep_separate_medians(self):
+        rows = [record(str(index), [(lap, False)], duration=length)
+                for index, (length, lap) in enumerate([(1199, 90), (1200, 110), (2399, 132), (2400, 140), (3600, 180)])]
+        rows.append(record('practice', [(20, False)], kind='Practice', duration=3600))
+        card = catalog_overview(rows)['overview']['layouts'][0]
+        by_duration = card['race_durations']
+        self.assertEqual({key: rows[0]['pace']['median_s'] for key, rows in by_duration.items()},
+                         {'short':90,'medium':121,'long':140,'endurance':180})
+        self.assertEqual(card['groups'][0]['pace']['median_s'],132)
+        self.assertEqual(card['sessions'],6)

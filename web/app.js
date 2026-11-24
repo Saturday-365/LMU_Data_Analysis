@@ -3,6 +3,7 @@ import {SessionInsights} from './insights.js';
 import {TrajectoryMap} from './trajectory.js';
 import {PracticeConditions} from './conditions.js';
 import {SessionPace} from './pace.js';
+import {CircuitOverview} from './overview.js';
 import {IntervalReview} from './intervals.js';
 import {PaceArchive, dateLabel, lapTime, layoutKey, sameGroup, trackName, typeLabel, vehicleName} from './archive.js';
 
@@ -16,6 +17,7 @@ const trajectory = new TrajectoryMap($('trajectory-map'), $('trajectory-status')
 const insights = new SessionInsights(api, new SessionPace(api, selectSession));
 const conditions = new PracticeConditions(api, notice, trajectory);
 const archive = new PaceArchive(selectSession);
+const overview = new CircuitOverview(api,selectSession,session => archive.show('detail',session));
 const intervals = new IntervalReview(api, focusInterval, value => charts.setCursor(value), {
   prepare: () => {if(charts.axis !== 'distance'){state.axis = 'distance';setAxis();}},
   active: enabled => {charts.setMarking(enabled);trajectory.setMarking(enabled);},
@@ -79,7 +81,8 @@ async function refreshSessions(){
   const data = await api('/sessions');
   state.sessions = data.items;
   renderSessions();
-  archive.setSessions(state.sessions,data.overview);
+  archive.setSessions(state.sessions);
+  overview.setData(data.overview,archive.sessions);
 }
 
 function showArchive(){
@@ -156,7 +159,7 @@ function populateReference(session, useBest){
   laps.disabled = !state.session.laps.length || !session.laps.length;
 }
 
-async function selectSession(id, ordinal = null){
+async function selectSession(id, ordinal = null, view = null){
   const generation = ++state.sessionRequest;
   state.referenceRequest++;
   state.traceRequest++;
@@ -169,7 +172,7 @@ async function selectSession(id, ordinal = null){
     if(generation !== state.sessionRequest) return;
     state.session = state.reference = session;
     renderSession(session, ordinal);
-    if(ordinal != null) insights.show('telemetry');
+    if(view || ordinal != null) insights.show(view || 'telemetry');
     insights.setSession(session);
     conditions.setSession(session);
     await loadTraces();
