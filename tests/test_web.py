@@ -82,6 +82,46 @@ class WebTests(unittest.TestCase):
         me = self.client.get('/api/v1/me', headers={'x-driver-id':'someone-else'}).json()
         self.assertEqual(me['id'], LOCAL_DRIVER_ID)
 
+    def test_archive_pace_and_manual_vehicle_model(self):
+        session = self.upload().json()['session']
+        base = f"/api/v1/sessions/{session['id']}"
+        response = self.client.patch(base + '/conditions', headers={'x-lmu-client':'web'},
+                                     json={'changes':{'model':{'state':'known', 'value':'测试车型'}}})
+        self.assertEqual(response.status_code, 200, response.text)
+        latest = self.client.get('/api/v1/sessions').json()['items'][0]
+        self.assertEqual(latest['vehicle_model'], '测试车型')
+        self.assertEqual(latest['pace'], {'count':2, 'best_s':10, 'best_ordinal':1, 'median_s':10, 'stddev_s':0})
+
+    def test_compare_across_sessions_checks_layout_ownership_and_delta(self):
+        import duckdb
+
+        with duckdb.connect(str(self.source)) as connection:
+            connection.execute("INSERT INTO metadata VALUES ('TrackName', 'Synthetic test track')")
+        with TestClient(create_app(self.data, identity=TestIdentity())) as client:
+            first = self.upload(client, content=self.source.read_bytes()).json()['session']
+            with duckdb.connect(str(self.source)) as connection:
+                connection.execute("INSERT INTO metadata VALUES ('CarName', 'Different car')")
+            same_layout = self.upload(client, content=self.source.read_bytes()).json()['session']
+            other_driver = self.upload(client, content=self.source.read_bytes(),
+                                       **{'x-test-owner':'driver-b'}).json()['session']
+            with duckdb.connect(str(self.source)) as connection:
+                connection.execute("UPDATE metadata SET value='Different layout' WHERE key='TrackLayout'")
+            other_layout = self.upload(client, content=self.source.read_bytes()).json()['session']
+            url = f"/api/v1/sessions/{first['id']}/laps/{first['laps'][0]['id']}/comparison"
+
+            def compare(reference):
+                return client.get(url, params={'reference_session_id':reference['id'],
+                                               'reference_lap_id':reference['laps'][0]['id']})
+
+            result = compare(same_layout)
+            self.assertEqual(result.status_code, 200, result.text)
+            delta = result.json()['delta']
+            self.assertTrue(delta['comparable'])
+            self.assertTrue(delta['values'])
+            self.assertTrue(all(value == 0 for value in delta['values'] if value is not None))
+            self.assertEqual(compare(other_driver).status_code, 404)
+            self.assertEqual(compare(other_layout).status_code, 422)
+
     def test_trace_with_gps_and_invalid_optional_coordinate_unit(self):
         import duckdb
         with duckdb.connect(str(self.source)) as c:

@@ -29,7 +29,8 @@ class LocalIdentity:
         return LOCAL_DRIVER_ID
 
 
-def create_app(data_dir=None, *, identity=None, repository=None, blobs=None, max_upload_bytes=128*1024*1024):
+def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, blobs=None,
+               max_upload_bytes=256*1024*1024):
     directory = Path(data_dir or ROOT / "data")
     repository = repository or SQLiteSessionRepository(directory / "catalog.sqlite3")
     blobs = blobs or LocalBlobStore(directory / "recordings")
@@ -66,7 +67,7 @@ def create_app(data_dir=None, *, identity=None, repository=None, blobs=None, max
 
     @app.get("/api/v1/me")
     def me(request: Request):
-        return {**driver(request), "mode": "local"}
+        return {**driver(request), "mode": "local", "max_upload_bytes": max_upload_bytes}
 
     @app.get("/api/v1/sessions")
     def sessions(request: Request):
@@ -92,7 +93,7 @@ def create_app(data_dir=None, *, identity=None, repository=None, blobs=None, max
                 async for chunk in request.stream():
                     size += len(chunk)
                     if size > max_upload_bytes:
-                        raise HTTPException(413, "文件超过本地版本的 128 MB 上限")
+                        raise HTTPException(413, f"文件超过本地版本的 {max_upload_bytes / 1024**2:g} MiB 上限")
                     stream.write(chunk)
             if size == 0:
                 raise HTTPException(400, "文件为空")
@@ -101,8 +102,10 @@ def create_app(data_dir=None, *, identity=None, repository=None, blobs=None, max
                                 status_code=200 if duplicate else 201)
         except TelemetryError as error:
             message = str(error).replace(str(staging), "所选文件")
+            if message.startswith('GPS Time: non-uniform'):
+                message = 'GPS 时钟不连续、重复或回退，无法可靠重建采样时间。'
             raise HTTPException(422, f"无法解析遥测：{message}") from error
-        except OSError as error:
+        except (OSError, sqlite3.Error) as error:
             raise HTTPException(500, "本地存储失败，请检查磁盘空间和目录权限") from error
         finally:
             if staging.is_file():
@@ -116,6 +119,17 @@ def create_app(data_dir=None, *, identity=None, repository=None, blobs=None, max
             raise HTTPException(404, str(error)) from error
         except (TelemetryError, OSError) as error:
             raise HTTPException(422, "该记录无法读取，请检查本地文件或重新导入") from error
+
+    @app.get('/api/v1/sessions/{session_id}/laps/{lap_id}/comparison')
+    def comparison(session_id: str, lap_id: str, reference_session_id: str, reference_lap_id: str, request: Request):
+        try:
+            return service.comparison(driver(request)['id'], session_id, lap_id, reference_session_id, reference_lap_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        except (TelemetryError, OSError) as error:
+            raise HTTPException(422, '其中一份录制无法读取，请检查本地文件。') from error
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
 
     @app.get("/api/v1/sessions/{session_id}/timing")
     def timing(session_id: str, request: Request):
@@ -173,7 +187,7 @@ def create_app(data_dir=None, *, identity=None, repository=None, blobs=None, max
         except (TelemetryError, OSError) as error:
             raise HTTPException(422, '无法读取赛道参照') from error
 
-    web_root = ROOT / "web"
+    web_root = Path(web_dir) if web_dir is not None else ROOT / 'web'
     app.mount("/assets", StaticFiles(directory=web_root), name="assets")
 
     @app.get("/")

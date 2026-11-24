@@ -145,17 +145,23 @@ class SQLiteSessionRepository:
             return None
         result = dict(row)
         result["summary"] = json.loads(result.pop("summary_json"))
+        model = json.loads(result.pop('model_annotation', None) or 'null')
+        result['vehicle_model'] = model['value'] if model and model['state'] == 'known' else None
         return result
 
     def list_sessions(self, driver_id):
         with self.connection() as c:
             return [self._decode(row) for row in c.execute(
-                "SELECT * FROM sessions WHERE driver_id=? ORDER BY created_at DESC,id DESC", (driver_id,))]
+                "SELECT s.*, a.value_json AS model_annotation FROM sessions s LEFT JOIN annotations a "
+                "ON a.session_id=s.id AND a.scope='session' AND a.field='model' "
+                "WHERE s.driver_id=? ORDER BY s.created_at DESC,s.id DESC", (driver_id,))]
 
     def get_session(self, driver_id, session_id):
         with self.connection() as c:
             result = self._decode(c.execute(
-                "SELECT * FROM sessions WHERE driver_id=? AND id=?", (driver_id, session_id)).fetchone())
+                "SELECT s.*, a.value_json AS model_annotation FROM sessions s LEFT JOIN annotations a "
+                "ON a.session_id=s.id AND a.scope='session' AND a.field='model' "
+                "WHERE s.driver_id=? AND s.id=?", (driver_id, session_id)).fetchone())
             if result:
                 result["laps"] = [dict(row) for row in c.execute(
                     "SELECT * FROM laps WHERE session_id=? ORDER BY ordinal", (session_id,))]

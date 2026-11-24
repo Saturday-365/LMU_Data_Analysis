@@ -2,6 +2,7 @@
 
 from collections import OrderedDict
 from pathlib import Path
+from statistics import median, pstdev
 from threading import RLock
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from .inventory import inspect_channels
 from .trajectory import lap_trajectory
 from .conditions import extract_context, context_document, validate_changes
 from .track_reference import load_reference
+from .comparison import compare_distance, layout_key, share_trajectory_frame
 
 
 class TelemetryService:
@@ -51,8 +53,9 @@ class TelemetryService:
             session, recording = self._recording(driver_id, session_id)
             return load_reference(self.track_root, self.repository.track_reference_key(driver_id, session_id), recording)
 
-    def _recording(self, driver_id, session_id):
-        session = self.repository.get_session(driver_id, session_id)
+    def _recording(self, driver_id, session_id, session=None):
+        if session is None:
+            session = self.repository.get_session(driver_id, session_id)
         if session is None:
             raise LookupError("练习记录不存在")
         key = (driver_id, session_id)
@@ -104,18 +107,11 @@ class TelemetryService:
         with self.lock:
             session = self.repository.get_session(driver_id, session_id)
             if session is None:
-                raise LookupError("练习记录不存在")
+                raise LookupError('练习记录不存在')
             lap = next((item for item in session["laps"] if item["id"] == lap_id), None)
             if lap is None:
                 raise LookupError("圈次不存在")
-            key = (driver_id, session_id)
-            recording = self.cache.get(key)
-            if recording is None:
-                with self.blobs.materialize(session["blob_key"]) as path:
-                    recording = read_recording(path)
-                self._remember(key, recording)
-            else:
-                self.cache.move_to_end(key)
+            _, recording = self._recording(driver_id, session_id, session)
             extracted = extract_lap(recording, lap["ordinal"])
             aligned = extracted["aligned"]
             distance = aligned["channels"].get("distance", {}).get("values")
@@ -129,13 +125,41 @@ class TelemetryService:
                     "timing": "reconstructed", "validity": "unknown",
                     "trajectory": lap_trajectory(recording, lap['ordinal'])}
 
+    def comparison(self, driver_id, session_id, lap_id, reference_session_id, reference_lap_id):
+        with self.lock:
+            current = self.repository.get_session(driver_id, session_id)
+            reference = self.repository.get_session(driver_id, reference_session_id)
+            if current is None or reference is None:
+                raise LookupError('录制会话不存在')
+            current_layout = layout_key(current['summary']['metadata'])
+            reference_layout = layout_key(reference['summary']['metadata'])
+            if session_id != reference_session_id and (not all(current_layout) or current_layout != reference_layout):
+                raise ValueError('跨会话对比需要两份录制有一致且已知的赛道布局。')
+            first = self.trace(driver_id, session_id, lap_id)
+            second = first if session_id == reference_session_id and lap_id == reference_lap_id else self.trace(
+                driver_id, reference_session_id, reference_lap_id)
+            traces = [first, second]
+            share_trajectory_frame(traces)
+            return {'traces': traces, 'delta': compare_distance(traces)}
+
 
 def public_session(row, detail=False):
     data = row["summary"]
     laps = data["complete_laps"]
     times = [lap["lap_time_s"] for lap in laps if lap["lap_time_s"] is not None]
+    counted = [lap for lap in laps if lap['lap_time_s'] is not None and lap['lap_time_s'] > 0
+               and not lap.get('contains_pit_state')]
+    best = min(counted, key=lambda lap: lap['lap_time_s'], default=None)
+    pace_times = [lap['lap_time_s'] for lap in counted]
+    # 直接读取已有目录摘要，历史页无需逐个重新打开 DuckDB。
+    pace = {'count': len(counted), 'best_s': best['lap_time_s'] if best else None,
+            'best_ordinal': best['complete_lap_number'] if best else None,
+            'median_s': median(pace_times) if pace_times else None,
+            'stddev_s': pstdev(pace_times) if len(pace_times) > 1 else None}
+    metadata = data['metadata']
     result = {"id": row["id"], "driver_id": row["driver_id"], "filename": row["filename"],
-              "created_at": row["created_at"], "metadata": data["metadata"],
+              "created_at": row["created_at"], "metadata": metadata,
+              "vehicle_model": row.get('vehicle_model'), "pace": pace,
               "complete_lap_count": len(laps), "best_lap_s": min(times) if times else None,
               "duration_s": data["recording_end_s"]-data["recording_start_s"]}
     if detail:

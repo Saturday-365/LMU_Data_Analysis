@@ -644,17 +644,23 @@
         status.textContent = '正在准备本地翻译…';
         let session;
         try {
-            const options = { sourceLanguage: 'en', targetLanguage: 'zh-Hans' };
-            options.monitor = monitor => {
-                monitor.addEventListener('downloadprogress', ({ loaded }) => {
-                    status.textContent = `正在下载本地模型… ${Math.round(loaded * 100)}%`;
-                });
-            };
+            const options = { sourceLanguage: 'en', targetLanguage: 'zh' };
             if (await api.availability(options) === 'unavailable') {
+                options.targetLanguage = 'zh-Hans';
+            }
+            if (options.targetLanguage === 'zh-Hans' && await api.availability(options) === 'unavailable') {
                 status.textContent = '当前浏览器未提供英语到简体中文的本地模型。';
                 return;
             }
-            session = await api.create(options);
+            session = await api.create({
+                ...options,
+                monitor: monitor => {
+                    monitor.addEventListener('downloadprogress', ({ loaded, total }) => {
+                        const progress = Math.round(100 * loaded / (total || 1));
+                        status.textContent = `正在下载本地模型… ${Math.min(100, progress)}%`;
+                    });
+                },
+            });
             const main = document.querySelector('main,[role="main"]') ?? document.body;
             let done = 0;
             for (const block of main.querySelectorAll(proseSelector)) {

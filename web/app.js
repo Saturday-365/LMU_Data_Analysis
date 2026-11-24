@@ -2,33 +2,385 @@ import {TelemetryCharts} from './charts.js';
 import {SessionInsights} from './insights.js';
 import {TrajectoryMap} from './trajectory.js';
 import {PracticeConditions} from './conditions.js';
-const $=id=>document.getElementById(id);
-const state={sessions:[],session:null,traces:[],axis:'distance',generation:0,importing:false};
-const charts=new TelemetryCharts($('charts'),$('cursor-position'));
-const trajectory=new TrajectoryMap($('trajectory-map'),$('trajectory-status'),$('trajectory-position'),$('trajectory-follow'));
-charts.onCursor=value=>trajectory.setCursor(value);
-trajectory.onCursor=value=>charts.setCursor(value);
-$('trajectory-plus').addEventListener('click',()=>{trajectory.disableFollow();trajectory.zoom(1.5);});
-$('trajectory-minus').addEventListener('click',()=>{trajectory.disableFollow();trajectory.zoom(1/1.5);});
-$('trajectory-fit').addEventListener('click',()=>{trajectory.disableFollow();trajectory.fit();});
-const insights=new SessionInsights(api);
-const conditions=new PracticeConditions(api,notice,trajectory);
+import {PaceArchive, dateLabel, lapTime, layoutKey, sameGroup, trackName, typeLabel, vehicleName} from './archive.js';
+
+const $ = id => document.getElementById(id);
+const state = {
+  sessions: [], session: null, reference: null, traces: [], delta: null, axis: 'distance',
+  sessionRequest: 0, referenceRequest: 0, traceRequest: 0, importing: false, maxUpload: null,
+};
+const charts = new TelemetryCharts($('charts'), $('cursor-position'));
+const trajectory = new TrajectoryMap($('trajectory-map'), $('trajectory-status'), $('trajectory-position'), $('trajectory-follow'));
+const insights = new SessionInsights(api);
+const conditions = new PracticeConditions(api, notice, trajectory);
+const archive = new PaceArchive(selectSession);
+charts.onCursor = value => trajectory.setCursor(value);
+trajectory.onCursor = value => charts.setCursor(value);
+
 let noticeTimer;
-function notice(message,error=false,persist=false){clearTimeout(noticeTimer);$('notice').textContent=message;$('notice').classList.toggle('error',error);$('notice').hidden=false;if(!persist)noticeTimer=setTimeout(()=>$('notice').hidden=true,error?10000:4000);}
-async function api(path,options={}){const response=await fetch(`/api/v1${path}`,options);if(!response.ok){let error;try{error=await response.json();}catch{error={detail:`请求失败（${response.status}）`};}throw Error(typeof error.detail==='string'?error.detail:'请求未成功');}return response.json();}
-function lapTime(seconds){if(seconds==null)return '—';const ms=Math.round(seconds*1000);return `${Math.floor(ms/60000)}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(ms%1000).padStart(3,'0')}`;}
-function dateLabel(value){if(!value)return '录制日期未提供';const normalized=String(value).replace(/T(\d{2})_(\d{2})_(\d{2})Z$/, 'T$1:$2:$3Z');const date=new Date(normalized);return Number.isNaN(date.getTime())?String(value):date.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});}
-function track(meta){return meta.TrackLayout||meta.TrackName||'未知赛道';}
-function renderSessions(){const list=$('sessions');list.replaceChildren();$('session-count').textContent=state.sessions.length;if(!state.sessions.length){const p=document.createElement('p');p.className='session-empty';p.textContent='还没有练习记录。\n从一份遥测文件开始。';list.append(p);}for(const session of state.sessions){const button=document.createElement('button');button.className='session-item';button.classList.toggle('active',session.id===state.session?.id);button.setAttribute('aria-current',String(session.id===state.session?.id));const name=document.createElement('strong'),meta=document.createElement('small');name.textContent=track(session.metadata);meta.textContent=`${session.complete_lap_count} 圈 · ${session.metadata.RecordingTime?dateLabel(session.metadata.RecordingTime):'录制时间未知 · 导入 '+dateLabel(session.created_at)}`;button.append(name,meta);button.title=session.filename;button.addEventListener('click',()=>selectSession(session.id));list.append(button);}}
-async function refreshSessions(){state.sessions=(await api('/sessions')).items;renderSessions();}
-function renderSession(session){$('empty').hidden=true;$('workspace').hidden=false;$('track-name').textContent=track(session.metadata);$('car-name').textContent=[session.metadata.CarName,session.metadata.CarClass].filter(Boolean).join(' · ')||'车辆信息未提供';$('session-type').textContent=session.metadata.SessionType||'练习记录';$('best-lap').textContent=lapTime(session.best_lap_s);$('lap-count').textContent=String(session.complete_lap_count).padStart(2,'0');const fragments=session.segments.filter(s=>s.kind!=='complete').length;$('fragment-count').textContent=`另有 ${fragments} 个不完整片段`;$('duration').textContent=`${Math.floor(session.duration_s/60)}:${String(Math.floor(session.duration_s%60)).padStart(2,'0')}`;$('recorded-date').textContent=dateLabel(session.metadata.RecordingTime);$('source-file').textContent=`原始文件：${session.filename}`;$('diagnostic-count').textContent=`${session.diagnostics.length} 条读取提示`;$('diagnostics').replaceChildren();for(const d of session.diagnostics){const li=document.createElement('li');li.textContent=d.message;$('diagnostics').append(li);}for(const id of ['lap-select','reference-select']){const select=$(id);select.replaceChildren();if(id==='reference-select')select.add(new Option('不叠加参考圈',''));for(const lap of session.laps)select.add(new Option(`第 ${lap.ordinal} 圈 · ${lap.display_time||lapTime(lap.lap_time_s)}`,lap.id));select.disabled=!session.laps.length;}if(!session.laps.length){$('selection-note').textContent='未找到可展示的完整圈';notice('文件已保存，但没有可展示的完整圈。请查看读取状态。',false);}renderSessions();}
-async function selectSession(id){const generation=++state.generation;insights.setSession(null);conditions.setSession(null);trajectory.setData([],state.axis);charts.setData([],state.axis);$('charts').classList.add('loading');try{const session=await api(`/sessions/${encodeURIComponent(id)}`);if(generation!==state.generation)return;state.session=session;renderSession(session);insights.setSession(session);conditions.setSession(session);await loadTraces();}catch(error){if(generation===state.generation){$('workspace').hidden=true;$('empty').hidden=false;notice(error.message,true);}}finally{if(generation===state.generation)$('charts').classList.remove('loading');}}
-async function loadTraces(){const generation=++state.generation;const session=state.session;if(!session)return;$('charts').classList.add('loading');state.traces=[];trajectory.setData([],state.axis);charts.setData([],state.axis);const ids=[$('lap-select').value,$('reference-select').value].filter(Boolean);conditions.loadLaps(ids);$('selection-note').textContent=ids.length===2?'双圈叠加 · 同一练习记录':'单圈查看';try{const traces=await Promise.all(ids.map(id=>api(`/sessions/${session.id}/laps/${id}/trace`)));if(generation!==state.generation)return;state.traces=traces;setAxis(state.axis);}catch(error){if(generation===state.generation)notice(error.message,true);}finally{if(generation===state.generation)$('charts').classList.remove('loading');}}
-function setAxis(axis){const distanceAvailable=state.traces.length>0&&state.traces.every(t=>t.distance_available);$('axis-distance').disabled=!distanceAvailable;state.axis=axis==='distance'&&!distanceAvailable?'time':axis;$('axis-distance').setAttribute('aria-pressed',String(state.axis==='distance'));$('axis-time').setAttribute('aria-pressed',String(state.axis==='time'));$('axis-note').textContent=state.axis==='distance'?'横轴：赛道距离（m） · 两圈按各自距离叠加':`横轴：圈内时间（s）${distanceAvailable?'':' · 暂无可靠的单调距离数据'}`;trajectory.setData(state.traces,state.axis);charts.setData(state.traces,state.axis);}
-async function importFile(file){if(!file||state.importing)return;if(!file.name.toLowerCase().endsWith('.duckdb')){notice('请选择 LMU 原生 .duckdb 文件。',true);return;}if(file.size>128*1024*1024){notice('文件超过 128 MB 上限。',true);return;}state.importing=true;document.body.classList.add('busy');$('file-input').disabled=true;notice('正在导入并解析遥测，请稍候…',false,true);try{const result=await api('/sessions',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Filename':encodeURIComponent(file.name),'X-LMU-Client':'web'},body:file});await refreshSessions();await selectSession(result.session.id);notice(result.duplicate?'这份文件已导入，已打开现有记录。':`导入完成 · ${result.session.complete_lap_count} 个完整圈已保存到本机。`);}catch(error){notice(error.message,true);}finally{state.importing=false;document.body.classList.remove('busy');$('file-input').disabled=false;$('file-input').value='';}}
-$('file-input').addEventListener('change',e=>importFile(e.target.files[0]));$('empty-import').addEventListener('click',()=>$('file-input').click());
-for(const event of ['dragenter','dragover'])$('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.add('dragover');});
-for(const event of ['dragleave','drop'])$('dropzone').addEventListener(event,e=>{e.preventDefault();$('dropzone').classList.remove('dragover');if(event==='drop')importFile(e.dataTransfer.files[0]);});
-window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
-$('lap-select').addEventListener('change',loadTraces);$('reference-select').addEventListener('change',loadTraces);$('axis-distance').addEventListener('click',()=>setAxis('distance'));$('axis-time').addEventListener('click',()=>setAxis('time'));$('reset-zoom').addEventListener('click',()=>charts.reset());
-async function start(){try{const me=await api('/me');$('driver-name').textContent=me.display_name;await refreshSessions();if(state.sessions.length)await selectSession(state.sessions[0].id);}catch(error){notice(`无法连接本地服务：${error.message}`,true);}}start();
+function notice(message, error = false, persist = false){
+  clearTimeout(noticeTimer);
+  $('notice').textContent = message;
+  $('notice').classList.toggle('error', error);
+  $('notice').hidden = false;
+  if(!persist) noticeTimer = setTimeout(() => $('notice').hidden = true, error ? 10000 : 4000);
+}
+
+async function api(path, options = {}){
+  const response = await fetch('/api/v1' + path, options);
+  if(response.ok) return response.json();
+  const problem = await response.json().catch(() => null);
+  throw Error(typeof problem?.detail === 'string' ? problem.detail : `请求失败（${response.status}）`);
+}
+
+function sessionDate(session){
+  return session.metadata.RecordingTime ? dateLabel(session.metadata.RecordingTime)
+    : `录制时间未知 · 导入于 ${dateLabel(session.created_at)}`;
+}
+
+function renderSessions(){
+  const list = $('sessions');
+  list.replaceChildren();
+  $('session-count').textContent = state.sessions.length;
+  if(!state.sessions.length){
+    const note = document.createElement('p');
+    note.className = 'session-empty';
+    note.textContent = '还没有会话记录。';
+    list.append(note);
+  }
+  for(const session of state.sessions){
+    const button = document.createElement('button');
+    button.className = 'session-item';
+    if(session.id === state.session?.id){
+      button.classList.add('active');
+      button.setAttribute('aria-current', 'page');
+    }
+    const title = document.createElement('strong'), meta = document.createElement('small');
+    title.textContent = trackName(session.metadata);
+    meta.textContent = `${typeLabel(session.metadata.SessionType)} · ${session.complete_lap_count} 圈 · ${sessionDate(session)}`;
+    button.append(title, meta);
+    button.title = session.filename;
+    button.onclick = () => selectSession(session.id);
+    list.append(button);
+  }
+}
+
+async function refreshSessions(){
+  state.sessions = (await api('/sessions')).items;
+  renderSessions();
+  archive.setSessions(state.sessions);
+}
+
+function showArchive(){
+  state.session = null;
+  state.reference = null;
+  state.sessionRequest++;
+  state.referenceRequest++;
+  state.traceRequest++;
+  insights.setSession(null);
+  conditions.setSession(null);
+  $('workspace').hidden = true;
+  $('archive').hidden = false;
+  $('import-report').hidden = !$('import-results').childElementCount;
+  $('page-label').textContent = '个人圈速';
+  $('open-archive').classList.add('active');
+  $('open-archive').setAttribute('aria-current', 'page');
+  renderSessions();
+}
+
+function lapOption(lap){
+  return new Option(`第 ${lap.ordinal} 圈 · ${lap.display_time || lapTime(lap.lap_time_s)}`, lap.id);
+}
+
+function renderSession(session, ordinal){
+  $('archive').hidden = true;
+  $('workspace').hidden = false;
+  $('import-report').hidden = true;
+  $('open-archive').classList.remove('active');
+  $('open-archive').removeAttribute('aria-current');
+  $('page-label').textContent = '会话分析';
+  $('track-name').textContent = trackName(session.metadata);
+  $('car-name').textContent = [vehicleName(session), session.metadata.CarClass].filter(Boolean).join(' · ');
+  $('session-type').textContent = typeLabel(session.metadata.SessionType);
+  $('best-lap').textContent = lapTime(session.best_lap_s);
+  $('lap-count').textContent = session.complete_lap_count;
+  const fragments = session.segments.filter(segment => segment.kind !== 'complete').length;
+  $('fragment-count').textContent = `另有 ${fragments} 个不完整片段`;
+  $('duration').textContent = `${Math.floor(session.duration_s / 60)}:${String(Math.floor(session.duration_s % 60)).padStart(2, '0')}`;
+  $('recorded-date').textContent = dateLabel(session.metadata.RecordingTime);
+  $('source-file').textContent = `原始文件：${session.filename}`;
+  $('diagnostic-count').textContent = `${session.diagnostics.length} 条读取提示`;
+  $('diagnostics').replaceChildren(...session.diagnostics.map(item => {
+    const li = document.createElement('li');
+    li.textContent = item.message;
+    return li;
+  }));
+  const current = $('lap-select');
+  current.replaceChildren(...session.laps.map(lapOption));
+  current.disabled = !session.laps.length;
+  const requested = session.laps.find(lap => lap.ordinal === ordinal);
+  if(requested) current.value = requested.id;
+
+  const layout = layoutKey(session.metadata);
+  const others = state.sessions.filter(other => other.id !== session.id && layout
+    && layout === layoutKey(other.metadata) && other.complete_lap_count > 0);
+  const best = others.filter(other => sameGroup(session, other) && other.pace.best_s != null)
+    .sort((a,b) => a.pace.best_s - b.pace.best_s)[0];
+  const references = $('reference-session');
+  references.replaceChildren(new Option('本次会话', session.id), ...others.filter(other => other !== best).map(other =>
+    new Option(`${sessionDate(other)} · ${vehicleName(other)} · ${typeLabel(other.metadata.SessionType)}`, other.id)));
+  if(best) references.add(new Option(`历史最快参考 · ${lapTime(best.pace.best_s)} · ${sessionDate(best)}`, best.id), 1);
+  references.disabled = !session.laps.length;
+  populateReference(session, false);
+  renderSessions();
+}
+
+function populateReference(session, useBest){
+  const laps = $('reference-select');
+  laps.replaceChildren(new Option('不叠加参考圈', ''), ...session.laps.map(lapOption));
+  const best = session.laps.find(lap => lap.ordinal === session.pace.best_ordinal);
+  laps.value = useBest ? (best || session.laps[0])?.id || '' : '';
+  laps.disabled = !state.session.laps.length || !session.laps.length;
+}
+
+async function selectSession(id, ordinal = null){
+  const generation = ++state.sessionRequest;
+  state.referenceRequest++;
+  state.traceRequest++;
+  clearCharts();
+  insights.setSession(null);
+  conditions.setSession(null);
+  $('charts').classList.add('loading');
+  try{
+    const session = await api(`/sessions/${encodeURIComponent(id)}`);
+    if(generation !== state.sessionRequest) return;
+    state.session = state.reference = session;
+    renderSession(session, ordinal);
+    if(ordinal != null) insights.show('telemetry');
+    insights.setSession(session);
+    conditions.setSession(session);
+    await loadTraces();
+  }catch(error){
+    if(generation !== state.sessionRequest) return;
+    showArchive();
+    notice(error.message, true);
+  }
+}
+
+async function changeReference(){
+  const sequence = ++state.referenceRequest;
+  state.traceRequest++;
+  const current = state.session;
+  const id = $('reference-session').value;
+  $('reference-select').replaceChildren(new Option('正在读取参考圈…', ''));
+  $('reference-select').disabled = true;
+  $('charts').classList.add('loading');
+  clearCharts();
+  try{
+    const reference = id === current.id ? current : await api(`/sessions/${encodeURIComponent(id)}`);
+    if(sequence !== state.referenceRequest) return;
+    state.reference = reference;
+    populateReference(reference, id !== current.id);
+    await loadTraces();
+  }catch(error){
+    if(sequence !== state.referenceRequest) return;
+    state.reference = current;
+    $('reference-session').value = current.id;
+    populateReference(current, false);
+    await loadTraces();
+    notice(error.message, true);
+  }
+}
+
+function clearCharts(){
+  state.traces = [];
+  state.delta = null;
+  $('comparison-interval').hidden = true;
+  $('axis-distance').disabled = true;
+  trajectory.setData([], state.axis);
+  charts.setData([], state.axis, null);
+}
+
+async function loadTraces(){
+  const current = state.session;
+  if(!current) return;
+  const generation = ++state.traceRequest;
+  const reference = state.reference;
+  const lap = $('lap-select').value;
+  const refLap = $('reference-select').value;
+  $('charts').classList.add('loading');
+  clearCharts();
+
+  const chosen = lap ? [{session: current.id, lap}] : [];
+  if(lap && refLap) chosen.push({session: reference.id, lap: refLap});
+  conditions.loadLaps(chosen);
+  $('selection-note').textContent = !lap ? '未找到可展示的完整圈' : refLap
+    ? (current.id === reference.id ? '同会话双圈' : '跨会话双圈') : '单圈查看';
+  try{
+    if(!lap) return;
+    const path = `/sessions/${current.id}/laps/${lap}`;
+    let traces, delta;
+    if(refLap){
+      const query = new URLSearchParams({reference_session_id: reference.id, reference_lap_id: refLap});
+      ({traces, delta} = await api(`${path}/comparison?${query}`));
+    }else{
+      traces = [await api(path + '/trace')];
+    }
+    if(generation !== state.traceRequest) return;
+    state.traces = traces;
+    state.delta = delta || null;
+    setAxis();
+    resetInterval();
+  }catch(error){
+    if(generation === state.traceRequest) notice(error.message, true);
+  }finally{
+    if(generation === state.traceRequest) $('charts').classList.remove('loading');
+  }
+}
+
+function setAxis(){
+  const distanceAvailable = state.traces.length && state.traces.every(trace => trace.distance_available)
+    && state.delta?.comparable !== false;
+  $('axis-distance').disabled = !distanceAvailable;
+  const axis = distanceAvailable && state.axis === 'distance' ? 'distance' : 'time';
+  $('axis-distance').setAttribute('aria-pressed', String(axis === 'distance'));
+  $('axis-time').setAttribute('aria-pressed', String(axis === 'time'));
+  $('axis-note').textContent = axis === 'distance' ? '横轴：赛道距离（m）'
+    : `横轴：圈内时间（s）${distanceAvailable ? '' : ' · 缺少可比距离'}`;
+  trajectory.setData(state.traces, axis);
+  charts.setData(state.traces, axis, state.delta);
+}
+
+function resetInterval(){
+  const delta = state.delta;
+  $('comparison-interval').hidden = !delta;
+  $('interval-form').hidden = !delta?.values;
+  $('delta-description').textContent = delta?.reason || '';
+  $('interval-result').textContent = '';
+  if(!delta?.values) return;
+  $('interval-start').value = Math.ceil(delta.distance_m[0]);
+  $('interval-end').value = Math.floor(delta.distance_m.at(-1));
+}
+
+function pointAt(delta, distance){
+  const x = delta.distance_m, y = delta.values;
+  const right = x.findIndex(value => value >= distance);
+  if(right < 0 || distance < x[0]) return null;
+  if(x[right] === distance) return y[right];
+  if(y[right - 1] == null || y[right] == null) return null;
+  const fraction = (distance - x[right - 1]) / (x[right] - x[right - 1]);
+  return y[right - 1] + (y[right] - y[right - 1]) * fraction;
+}
+
+function focusInterval(event){
+  event.preventDefault();
+  const delta = state.delta;
+  if(!delta?.values) return;
+  const start = $('interval-start').valueAsNumber, end = $('interval-end').valueAsNumber;
+  if(!(start < end) || start < delta.distance_m[0] || end > delta.distance_m.at(-1)){
+    $('interval-result').textContent = '请输入共同覆盖范围内由小到大的距离。';
+    return;
+  }
+  const first = pointAt(delta, start), last = pointAt(delta, end);
+  const gap = delta.distance_m.some((distance, i) => distance > start && distance < end && delta.values[i] == null);
+  state.axis = 'distance';
+  setAxis();
+  charts.setRange(start, end);
+  charts.setCursor(end);
+  if(first == null || last == null || gap){
+    $('interval-result').textContent = '区间包含未能对齐的样点，无法计算区间得失。';
+    return;
+  }
+  const difference = last - first;
+  $('interval-result').textContent = Math.abs(difference) < .0005 ? '该区间两圈节奏相同（精确到毫秒）。'
+    : `当前圈在该区间${difference > 0 ? '丢失' : '追回'} ${Math.abs(difference).toFixed(3)} 秒。`;
+}
+
+async function importFiles(input){
+  const files = Array.from(input);
+  if(!files.length || state.importing) return;
+  state.importing = true;
+  document.body.classList.add('busy');
+  $('file-input').disabled = true;
+  $('empty-import').disabled = true;
+  $('import-report').hidden = false;
+  $('import-report').open = false;
+  $('import-results').replaceChildren();
+  let imported = 0, duplicates = 0, failures = 0;
+  try{
+    for(const [index, file] of files.entries()){
+      $('import-summary').textContent = `正在处理 ${index + 1} / ${files.length}：${file.name}`;
+      const result = document.createElement('li');
+      try{
+        if(!file.name.toLowerCase().endsWith('.duckdb')) throw Error('请选择 LMU 原生 .duckdb 文件。');
+        if(state.maxUpload && file.size > state.maxUpload) throw Error('文件超过单个导入上限。');
+        const outcome = await api('/sessions', {
+          method: 'POST', body: file,
+          headers: {'Content-Type':'application/octet-stream', 'X-Filename':encodeURIComponent(file.name), 'X-LMU-Client':'web'},
+        });
+        if(outcome.duplicate) duplicates++;
+        else imported++;
+        result.textContent = `${file.name} · ${outcome.duplicate ? '已存在' : '已导入'} · ${outcome.session.complete_lap_count} 个完整圈`;
+      }catch(error){
+        failures++;
+        result.className = 'import-failure';
+        result.textContent = `${file.name} · ${error.message}`;
+      }
+      $('import-results').append(result);
+    }
+    $('import-summary').textContent = `已导入 ${imported} 份 · 重复 ${duplicates} 份 · 失败 ${failures} 份`;
+    $('import-report').open = failures > 0;
+    await refreshSessions();
+    showArchive();
+  }catch(error){
+    notice(`已完成文件处理，刷新档案时出错：${error.message}`, true);
+  }finally{
+    state.importing = false;
+    document.body.classList.remove('busy');
+    $('file-input').disabled = false;
+    $('empty-import').disabled = false;
+    $('file-input').value = '';
+  }
+}
+
+$('open-archive').onclick = async () => {
+  showArchive();
+  try{await refreshSessions();}catch(error){notice(error.message, true);}
+};
+$('trajectory-plus').onclick = () => {trajectory.disableFollow(); trajectory.zoom(1.5);};
+$('trajectory-minus').onclick = () => {trajectory.disableFollow(); trajectory.zoom(1 / 1.5);};
+$('trajectory-fit').onclick = () => {trajectory.disableFollow(); trajectory.fit();};
+$('lap-select').onchange = loadTraces;
+$('reference-select').onchange = loadTraces;
+$('reference-session').onchange = changeReference;
+$('axis-distance').onclick = () => {state.axis = 'distance'; setAxis();};
+$('axis-time').onclick = () => {state.axis = 'time'; setAxis();};
+$('reset-zoom').onclick = () => charts.reset();
+$('interval-form').onsubmit = focusInterval;
+$('file-input').onchange = event => importFiles(event.target.files);
+$('empty-import').onclick = () => $('file-input').click();
+for(const event of ['dragenter','dragover']) $('dropzone').addEventListener(event, e => {
+  e.preventDefault();
+  $('dropzone').classList.add('dragover');
+});
+for(const event of ['dragleave','drop']) $('dropzone').addEventListener(event, e => {
+  e.preventDefault();
+  $('dropzone').classList.remove('dragover');
+  if(event === 'drop') importFiles(e.dataTransfer.files);
+});
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
+async function start(){
+  try{
+    const me = await api('/me');
+    $('driver-name').textContent = me.display_name;
+    state.maxUpload = me.max_upload_bytes;
+    $('import-limit').textContent = `单个文件最大 ${state.maxUpload / 1024**2} MiB`;
+    await refreshSessions();
+  }catch(error){
+    $('archive-loading').textContent = '读取本地档案失败。';
+    notice(`无法连接本地服务：${error.message}`, true);
+  }
+}
+start();

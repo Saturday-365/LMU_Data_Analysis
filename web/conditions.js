@@ -1,3 +1,5 @@
+import {trackName, typeLabel} from './archive.js';
+
 const $=id=>document.getElementById(id);
 const labels={known:'已知',unknown:'未知',not_recorded:'未记录',not_applicable:'不适用'};
 const layers={centerline:'中心线',left_boundary:'左边界',right_boundary:'右边界',kerb:'路肩',pit_lane:'维修区'};
@@ -13,7 +15,7 @@ export class PracticeConditions {
     $('condition-restore').addEventListener('click',()=>this.save(true));
   }
   input(){return this.field?.kind==='choice'?$('condition-choice'):$('condition-value');}
-  async setSession(session){this.session=session;const generation=++this.generation;this.editGeneration++;this.lapGeneration++;this.document=null;this.map.setReference(null);
+  async setSession(session){this.session=session;const generation=++this.generation;this.editGeneration++;this.lapGeneration++;this.document=null;this.lapIds=[];this.map.setReference(null);
     $('condition-cards').replaceChildren();$('condition-summary').textContent='';$('lap-conditions').replaceChildren();$('track-layers').replaceChildren();$('track-reference-status').textContent='正在检查赛道参照…';$('condition-form').hidden=true;
     const scopes=$('condition-scope');scopes.replaceChildren(new Option('整场练习（变化信息明确适用于整场）','session'));
     if(!session){$('track-reference-status').textContent='';return;}
@@ -30,7 +32,18 @@ export class PracticeConditions {
       this.document=data;this.render();$('condition-status').textContent='';if(scope==='session')this.summary(data);
     }catch(e){if(generation===this.generation&&edit===this.editGeneration){$('condition-status').textContent=e.message;$('condition-cards').replaceChildren();}}
   }
-  summary(data){const f=key=>data.fields.find(f=>f.key===key).effective;$('car-name').textContent=[valueText(f(f('model').state==='known'?'model':'car')),valueText(f('class'))].join(' · ');$('track-name').textContent=valueText(f(f('layout').state==='known'?'layout':'track'));$('session-type').textContent=valueText(f('session_type'));const keys=['ambient','track_temp','fuel','recorded_at'];$('condition-summary').textContent=keys.map(key=>{const f=data.fields.find(f=>f.key===key);return `${f.label} ${valueText(f.effective)}${f.effective.source==='user'?'（补录）':''}`;}).join(' · ');}
+  summary(data){
+    const field=key=>data.fields.find(item=>item.key===key);
+    const effective=key=>field(key).effective;
+    const known=key=>effective(key).state==='known'?effective(key).value:null;
+    $('car-name').textContent=[known('model')||known('car'),known('class')].filter(Boolean).join(' · ')||'未知车辆';
+    $('track-name').textContent=trackName({TrackName:known('track'),TrackLayout:known('layout')});
+    $('session-type').textContent=typeLabel(known('session_type'));
+    $('condition-summary').textContent=['ambient','track_temp','fuel','recorded_at'].map(key=>{
+      const item=field(key);
+      return `${item.label} ${valueText(item.effective)}${item.effective.source==='user'?'（补录）':''}`;
+    }).join(' · ');
+  }
   render(){const data=this.document;const selected=$('condition-field').value;$('condition-field').replaceChildren();$('condition-cards').replaceChildren();
     for(const group of [...new Set(data.fields.map(f=>f.group))]){const card=node('section',null,'condition-card');card.append(node('h3',group));const list=node('dl');
       for(const f of data.fields.filter(f=>f.group===group)){list.append(node('dt',f.label));const dd=node('dd',valueText(f.effective));const e=f.effective;
@@ -59,8 +72,8 @@ export class PracticeConditions {
       if(generation!==this.generation||edit!==this.editGeneration)return;this.document=data;this.render();if(scope==='session')this.summary(data);this.loadLaps(this.lapIds||[]);this.notice(restore?'已移除此范围的补录，恢复继承或自动值。':'练习信息已保存。');
     }catch(e){if(generation===this.generation)this.notice(e.message,true);}finally{$('condition-save').disabled=false;$('condition-scope').disabled=false;$('condition-field').disabled=false;if(generation===this.generation&&edit===this.editGeneration)this.populate();}
   }
-  async loadLaps(ids){this.lapIds=ids;const generation=this.generation,request=++this.lapGeneration,id=this.session?.id;$('lap-conditions').replaceChildren();if(!id)return;
-    try{const values=await Promise.all(ids.map(lap=>this.api(`/sessions/${id}/conditions?lap_id=${lap}`)));if(generation!==this.generation||request!==this.lapGeneration)return;
+  async loadLaps(ids){this.lapIds=ids;const generation=this.generation,request=++this.lapGeneration;$('lap-conditions').replaceChildren();if(!this.session)return;
+    try{const values=await Promise.all(ids.map(({session,lap})=>this.api(`/sessions/${session}/conditions?lap_id=${lap}`)));if(generation!==this.generation||request!==this.lapGeneration)return;
       values.forEach((data,i)=>{const p=node('p',`${i?'参考圈':'当前圈'} · `);p.className=i?'reference-conditions':'current-conditions';p.append(document.createTextNode(['ambient','track_temp','fuel','tyres','setup_name'].map(key=>{const f=data.fields.find(f=>f.key===key);return `${f.label}：${valueText(f.effective)}${f.effective.source==='user'?'（补录）':''}`;}).join(' · ')));$('lap-conditions').append(p);});
     }catch(e){if(generation===this.generation&&request===this.lapGeneration)$('lap-conditions').textContent='圈次条件读取失败：'+e.message;}
   }

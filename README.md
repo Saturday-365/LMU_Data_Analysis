@@ -8,6 +8,8 @@
 
 ## 启动网页
 
+Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.1.exe`。桌面版包含个人圈速档案、批量导入和跨会话对比。运行及构建方法见 [桌面版 V0.1](docs/desktop-v0.1.md)。
+
 双击根目录 `start-web.cmd`，再打开 **http://127.0.0.1:8765**。首次安装和操作说明见 [网页使用说明](docs/web-usage.md)。
 
 数据保存在本机 `data/`，重启后可继续读取。接口、车手 / 练习 / 圈次编号以及存储层已分开设计，为以后服务器部署和云存储预留替换位置；当前没有云端同步或账号登录。
@@ -69,7 +71,7 @@ LMU_Data_Analysis/
 
 Python 3.12 + DuckDB 1.5.5 已实现最小读取模块，运行方式见 [使用说明](docs/reader-usage.md)。入口为 `scripts/read_telemetry.py`，可选择完整圈并输出 JSON。原始样本以只读方式打开，连续通道时间重建及缺失值都有明确标记。
 
-当前样本已通过 4 个圈时及核心数据验收。连续通道的精确源采样相位与官方有效性仍未知。网页采用 FastAPI + 原生 JavaScript / Canvas，无需前端构建；新增模块为 `web/`、`web_app.py`、`web_service.py`、`storage.py` 和 `scripts/serve_web.py`。Windows EXE 打包暂未实现。
+当前样本已通过 4 个圈时及核心数据验收。连续通道的精确源采样相位与官方有效性仍未知。网页采用 FastAPI + 原生 JavaScript / Canvas，无需前端构建。桌面版复用同一套本机服务和界面，由 WebView2 提供独立窗口。
 
 ## 数据管理
 
