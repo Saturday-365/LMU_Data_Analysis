@@ -71,3 +71,36 @@
   .chart-actions { margin-left: 0; }
   .page-navigation { gap: 5px; }
 }
+.settings-nav { font-size: 13px; margin-bottom: 14px; }
+.settings-panel { max-width: 820px; }
+.settings-panel form > label { display: block; margin-bottom: 8px; color: #dce4ec; }
+.settings-path, .settings-actions { display: flex; align-items: center; gap: 8px; }
+.settings-path input {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  background: #11161a;
+  border: 1px solid #46525c;
+  border-radius: 5px;
+  padding: 10px 12px;
+}
+.settings-path button { white-space: nowrap; }
+.settings-actions .primary { margin: 0; padding: 8px 17px; }
+.settings-scan { border-top: 1px solid var(--line); padding-top: 12px; }
+.settings-scan h3 { margin-top: 0; font-size: 14px; }
+.settings-scan p, .settings-scan li, #import-settings-status {
+  color: #afbcc8;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+#directory-scan-issues:empty { display: none; }
+.auto-import-banner {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid #83cbd4;
+  color: #b6d6df;
+  background: #17212a;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+main:has(#settings-page:not([hidden])) .auto-import-banner { display: none; }

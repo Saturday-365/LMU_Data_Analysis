@@ -15,8 +15,9 @@
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="LMU 遥测工作台首页"><span class="brand-mark">L/</span><span>LMU<span class="brand-sub">个人遥测工作台</span></span></a>
-    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.56</span></div>
+    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.6</span></div>
     <button id="open-archive" class="session-item archive-nav active" aria-current="page">个人圈速</button>
+    <button id="open-settings" class="session-item settings-nav" type="button">设置</button>
     <label id="dropzone" class="import-box" for="file-input"><span class="import-icon">＋</span><strong>批量导入遥测</strong><span>点击选择或拖入 .duckdb</span><small>至少 1 分钟 · 至少 1 个完整圈</small><small id="import-limit">文件保存在本机</small></label>
     <input id="file-input" class="sr-only" type="file" accept=".duckdb" multiple aria-label="选择遥测文件">
     <div class="section-label">会话记录 <span id="session-count">0</span></div>
@@ -31,6 +32,7 @@
       <span class="local-badge"><span class="status-dot"></span> 仅本机</span>
     </header>
     <details id="import-report" class="import-report" hidden><summary id="import-summary" aria-live="polite"></summary><ul id="import-results"></ul></details>
+    <p id="auto-import-banner" class="auto-import-banner" role="status" hidden></p>
     <section id="archive" aria-labelledby="archive-title">
       <div class="session-heading">
         <h1 id="archive-title" tabindex="-1">个人赛道档案</h1>
@@ -56,7 +58,7 @@
           <div class="overview-recordings">
             <section id="overview-latest" class="overview-card latest-race" aria-labelledby="latest-title" hidden>
               <header class="overview-panel-header">
-                <div><h2 id="latest-title">最近一场正赛</h2><h3 id="latest-track"></h3><p id="latest-context"></p></div>
+                <div><h2 id="latest-title">会话预览</h2><h3 id="latest-track"></h3><p id="latest-context"></p></div>
                 <button id="latest-open" class="archive-link" type="button">打开会话</button>
               </header>
               <dl id="latest-facts" class="latest-facts"></dl>
@@ -76,7 +78,7 @@
             </section>
             <section class="overview-card recent-recordings" aria-labelledby="recent-title">
               <h2 id="recent-title">最近录制</h2>
-              <div id="recent-recordings"></div>
+              <div id="recent-recordings" role="group" aria-label="选择要预览的录制"></div>
             </section>
           </div>
           <div class="overview-heading"><h2>按赛道查看成绩</h2>
@@ -110,6 +112,30 @@
         <p class="info-note">节奏统计使用有记录圈时且无已知进站状态的完整圈。圈速波动为标准差，至少需要两圈；游戏判定的圈次有效性保持未知。</p>
         </div>
       </div>
+    </section>
+    <section id="settings-page" aria-labelledby="settings-title" hidden>
+      <div class="session-heading"><h1 id="settings-title" tabindex="-1">设置</h1></div>
+      <section class="archive-panel settings-panel" aria-labelledby="auto-import-title">
+        <div class="archive-panel-heading"><h2 id="auto-import-title">启动时导入遥测</h2></div>
+        <form id="auto-import-form">
+          <label for="telemetry-directory">遥测目录</label>
+          <div class="settings-path">
+            <input id="telemetry-directory" type="text" autocomplete="off" spellcheck="false" maxlength="32767" placeholder="例如 C:\LMU\Telemetry">
+            <button id="browse-telemetry-directory" type="button" class="quiet" hidden>选择文件夹</button>
+          </div>
+          <p class="info-note">软件启动时扫描此目录里的 .duckdb 文件，优先处理最近更新的录制。留空并保存可关闭。</p>
+          <div class="settings-actions">
+            <button id="save-import-settings" type="submit" class="primary" disabled>保存</button>
+            <button id="scan-telemetry-directory" type="button" class="quiet" disabled>立即扫描</button>
+          </div>
+          <p id="import-settings-status" role="status"></p>
+        </form>
+        <div class="settings-scan">
+          <h3>扫描结果</h3>
+          <p id="directory-scan-status" role="status"></p>
+          <ul id="directory-scan-issues"></ul>
+        </div>
+      </section>
     </section>
     <section id="workspace" hidden>
       <div class="session-heading"><div><h1 id="track-name" tabindex="-1">—</h1><p id="car-name"></p></div><span id="session-type" class="outline-badge">练习</span></div>

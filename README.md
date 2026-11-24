@@ -4,7 +4,7 @@
 
 ## 启动
 
-Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.56.exe`。每份录制的「节奏与调教」页可以查看整场和各驾驶段的圈速分布。运行及构建方法见 [桌面版 V0.56](docs/desktop-v0.56.md)。
+Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.6.exe`。首页支持切换录制预览，可在设置中配置启动时自动导入的遥测目录。运行及构建方法见 [桌面版 V0.6](docs/desktop-v0.6.md)。
 
 双击根目录 `start-web.cmd`，再打开 **http://127.0.0.1:8765**。首次安装和操作说明见 [网页使用说明](docs/web-usage.md)。
 

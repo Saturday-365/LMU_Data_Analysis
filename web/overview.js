@@ -39,7 +39,10 @@ export class CircuitOverview {
     this.openSession = openSession;
     this.openGroup = openGroup;
     this.spread = new PaceSpread($('latest-chart'));
-    this.latestId = null;
+    this.previewId = null;
+    this.previewRequest = null;
+    this.previewData = null;
+    this.manualSelection = false;
     $('overview-track').onchange = event => {
       $(event.target.value)?.scrollIntoView({block:'start'});
     };
@@ -52,16 +55,27 @@ export class CircuitOverview {
       $(`overview-${field.replace('_','-')}`).textContent = value.toLocaleString('zh-CN');
     }
     this.renderTracks(layouts);
-    $('recent-recordings').replaceChildren(...sessions.slice(0,6).map(session=>this.recentCard(session)));
-    const races = sessions.filter(session=>session.metadata.SessionType?.trim().toLowerCase()==='race');
-    const latest = races[0] || sessions[0];
-    $('overview-latest').hidden = !latest;
-    if(latest) this.renderLatest(latest,races.length > 0);
+    const recent = sessions.slice(0,6);
+    $('recent-recordings').replaceChildren(...recent.map(session=>this.recentCard(session)));
+    const selected = this.manualSelection && recent.find(session=>session.id===this.previewId);
+    if(!selected) this.manualSelection = false;
+    $('overview-latest').hidden = !recent.length;
+    if(recent.length){
+      this.preview(selected || recent[0]);
+    }else{
+      this.previewRequest?.abort();
+      this.previewRequest = this.previewData = this.previewId = null;
+    }
   }
 
   recentCard(session){
     const {metadata,pace} = session;
-    const item = button(null,()=>this.openSession(session.id),'recent-card');
+    const item = button(null,()=>{
+      this.manualSelection = true;
+      this.preview(session);
+    },'recent-card');
+    item.setAttribute('aria-controls','overview-latest');
+    item.dataset.sessionId = session.id;
     const time = timestamp(session) == null ? '录制时间未知' : dateLabel(metadata.RecordingTime);
     const info = node('span',null,'recent-card-label');
     info.append(node('strong',trackName(metadata)),node('small',
@@ -84,32 +98,41 @@ export class CircuitOverview {
     }));
   }
 
-  async renderLatest(session,hasRace){
+  async preview(session){
     const {id,metadata} = session;
-    $('latest-title').textContent = hasRace ? '最近一场正赛' : '最近会话';
+    for(const card of $('recent-recordings').children){
+      card.setAttribute('aria-pressed',String(card.dataset.sessionId===id));
+    }
     $('latest-track').textContent = trackName(metadata);
     $('latest-context').textContent = [typeLabel(metadata.SessionType), session.vehicle_brand || '未识别品牌',
       metadata.CarClass,dateLabel(metadata.RecordingTime)].filter(Boolean).join(' · ');
     $('latest-open').onclick = () => this.openSession(id,null,'pace');
-    if(this.latestId === id) return;
-    this.latestId = id;
+    if(this.previewId === id && (this.previewRequest || this.previewData)) return;
+    this.previewRequest?.abort();
+    const request = new AbortController();
+    this.previewRequest = request;
+    this.previewId = id;
+    this.previewData = null;
     this.showFacts(session);
     this.spread.setRows([]);
     $('latest-stints').hidden = $('latest-spread').hidden = true;
     $('latest-status').textContent = '正在读取驾驶段…';
     try{
-      const data = await this.api(`/sessions/${id}/pace`);
-      if(this.latestId !== id) return;
+      const data = await this.api(`/sessions/${id}/pace`, {signal:request.signal});
+      if(request.signal.aborted) return;
       const completePits = data.pit_visits.filter(pit=>pit.start_kind==='pit_entry'&&pit.end_kind==='pit_exit');
       this.showFacts(session,completePits);
-      $('latest-status').textContent = data.stint_reason || (data.stints.length ? '' : '这份录制未观测到赛道驾驶区间。');
-      this.renderStints(session,data);
+      $('latest-status').textContent = data.stint_reason || (data.stints.length ? '' : '这份录制未观测到驾驶段。');
+      this.renderStints(data);
+      this.previewData = data;
     }catch(error){
-      if(this.latestId === id) $('latest-status').textContent = `驾驶段读取失败：${error.message}`;
+      if(!request.signal.aborted) $('latest-status').textContent = `预览读取失败：${error.message}。再次选择可重试。`;
+    }finally{
+      if(this.previewRequest === request) this.previewRequest = null;
     }
   }
 
-  renderStints(session,data){
+  renderStints(data){
     const {stints,pit_visits:pits,duration_s:duration,statistics} = data;
     const timeline = $('latest-timeline');
     timeline.replaceChildren();
@@ -133,8 +156,7 @@ export class CircuitOverview {
       const stats = stint.statistics;
       const label = node('span',`第 ${stint.number} 段`);
       label.title = `${BOUNDARIES[stint.start_kind]} ${clock(stint.start_s)}`;
-      const best = stats.best_ordinal
-        ? button(lapTime(stats.best_s),()=>this.openSession(session.id,stats.best_ordinal),'overview-best') : '—';
+      const best = node('span',lapTime(stats.best_s),'preview-best');
       addCells(body.insertRow(),[label,stats.count,best,lapTime(stats.median_s),BOUNDARIES[stint.end_kind]]);
     }
     $('latest-stints').hidden = !stints.length;

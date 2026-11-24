@@ -1,5 +1,6 @@
 """Local-only HTTP adapter. Replace identity and persistence before cloud deployment."""
 
+from contextlib import asynccontextmanager
 from pathlib import Path, PureWindowsPath
 import sqlite3
 from typing import Protocol
@@ -13,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.gzip import GZipMiddleware
 
 from .models import TelemetryError
+from .auto_import import DirectoryImport
 from .comparison import layout_key
 from .storage import LocalBlobStore, SQLiteSessionRepository
 from .web_service import ImportRejected, TelemetryService, archive_laps_csv, catalog_overview, public_session
@@ -38,6 +40,11 @@ class IntervalInput(BaseModel):
     end_m: FiniteFloat = Field(gt=0, strict=True)
 
 
+class ImportSettingsInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    directory: str | None = Field(max_length=32767)
+
+
 def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, blobs=None,
                max_upload_bytes=256*1024*1024):
     directory = Path(data_dir or ROOT / "data")
@@ -45,7 +52,18 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
     blobs = blobs or LocalBlobStore(directory / "recordings")
     identity = identity or LocalIdentity()
     service = TelemetryService(repository, blobs, directory / 'track-resources')
-    app = FastAPI(title="LMU Data Analysis", version="0.56.0-local", docs_url=None, redoc_url=None)
+    directory_import = DirectoryImport(directory, service, LOCAL_DRIVER_ID, max_upload_bytes)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        if directory_import.snapshot()['directory']:
+            directory_import.start()
+        try:
+            yield
+        finally:
+            await run_in_threadpool(directory_import.stop)
+
+    app = FastAPI(title="LMU Data Analysis", version="0.6.0-local", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.service = service
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -77,6 +95,35 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
     @app.get("/api/v1/me")
     def me(request: Request):
         return {**driver(request), "mode": "local", "max_upload_bytes": max_upload_bytes}
+
+    def check_local_settings(request):
+        if identity.current_driver(request) != LOCAL_DRIVER_ID:
+            raise HTTPException(403, '仅本机档案可以管理自动导入。')
+
+    @app.get('/api/v1/settings/auto-import')
+    def get_import_settings(request: Request):
+        check_local_settings(request)
+        return directory_import.snapshot()
+
+    @app.put('/api/v1/settings/auto-import')
+    def set_import_settings(payload: ImportSettingsInput, request: Request):
+        check_local_settings(request)
+        try:
+            directory_import.configure(payload.directory)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        except OSError as error:
+            raise HTTPException(500, '无法保存设置，请检查档案目录权限。') from error
+        return directory_import.snapshot()
+
+    @app.post('/api/v1/settings/auto-import/scan', status_code=202)
+    def scan_import_directory(request: Request):
+        check_local_settings(request)
+        try:
+            directory_import.start()
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        return directory_import.snapshot()
 
     @app.get("/api/v1/sessions")
     def sessions(request: Request):

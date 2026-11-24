@@ -5,6 +5,7 @@ import {PracticeConditions} from './conditions.js';
 import {SessionPace} from './pace.js';
 import {CircuitOverview} from './overview.js';
 import {IntervalReview} from './intervals.js';
+import {ImportSettings} from './import-settings.js';
 import {PaceArchive, dateLabel, lapTime, layoutKey, sameGroup, trackName, typeLabel, vehicleName} from './archive.js';
 
 const $ = id => document.getElementById(id);
@@ -32,6 +33,7 @@ const insights = new SessionInsights(api, new SessionPace(api, selectSession));
 const conditions = new PracticeConditions(api, notice, trajectory, () => refreshSessions().catch(error => notice(error.message, true)));
 const archive = new PaceArchive(selectSession);
 const overview = new CircuitOverview(api,selectSession,session => archive.show('detail',session));
+const settings = new ImportSettings(api, () => refreshSessions().catch(error => notice(error.message, true)));
 const intervals = new IntervalReview(api, focusInterval, value => charts.setCursor(value), {
   prepare: () => {if(charts.axis !== 'distance'){state.axis = 'distance';setAxis();}},
   active: enabled => {charts.setMarking(enabled);trajectory.setMarking(enabled);},
@@ -118,8 +120,7 @@ async function refreshSessions(){
   }
 }
 
-function showArchive(){
-  const returning = $('archive').hidden;
+function closeSession(){
   abortRequests('session','reference','trace');
   state.session = null;
   state.reference = null;
@@ -128,12 +129,26 @@ function showArchive(){
   conditions.setSession(null);
   $('workspace').hidden = true;
   $('workspace').inert = false;
-  $('archive').hidden = false;
-  $('workspace-back').hidden = true;
   $('navigation-status').textContent = '';
+}
+
+function setNavigation(page){
+  for(const [id, name] of [['open-archive','archive'], ['open-settings','settings']]){
+    const target = $(id);
+    target.classList.toggle('active',page===name);
+    if(page===name) target.setAttribute('aria-current','page');
+    else target.removeAttribute('aria-current');
+  }
+}
+
+function showArchive(){
+  const returning = $('archive').hidden;
+  closeSession();
+  $('archive').hidden = false;
+  $('settings-page').hidden = true;
+  $('workspace-back').hidden = true;
   $('page-label').textContent = '个人圈速';
-  $('open-archive').classList.add('active');
-  $('open-archive').setAttribute('aria-current', 'page');
+  setNavigation('archive');
   archive.show(archive.mode);
   renderSessions();
   if(returning){
@@ -144,15 +159,28 @@ function showArchive(){
   }
 }
 
+function showSettings(){
+  if(!$('archive').hidden) state.archiveScroll = window.scrollY;
+  closeSession();
+  $('archive').hidden = true;
+  $('settings-page').hidden = false;
+  $('workspace-back').hidden = false;
+  $('page-label').textContent = '设置';
+  setNavigation('settings');
+  window.scrollTo(0, 0);
+  $('settings-title').focus({preventScroll:true});
+  settings.refresh();
+}
+
 function lapOption(lap){
   return new Option(`第 ${lap.ordinal} 圈 · ${lap.display_time || lapTime(lap.lap_time_s)}`, lap.id);
 }
 
 function renderSession(session, ordinal){
   $('archive').hidden = true;
+  $('settings-page').hidden = true;
   $('workspace').hidden = false;
-  $('open-archive').classList.remove('active');
-  $('open-archive').removeAttribute('aria-current');
+  setNavigation('session');
   $('page-label').textContent = '会话分析';
   $('track-name').textContent = trackName(session.metadata);
   $('car-name').textContent = [vehicleName(session), session.metadata.CarClass].filter(Boolean).join(' · ');
@@ -421,6 +449,7 @@ $('open-archive').onclick = $('workspace-back').onclick = async () => {
   showArchive();
   try{await refreshSessions();}catch(error){notice(error.message, true);}
 };
+$('open-settings').onclick = showSettings;
 $('session-search').oninput = renderSessions;
 $('lap-previous').onclick = () => stepLap(-1);
 $('lap-next').onclick = () => stepLap(1);
@@ -457,6 +486,7 @@ window.addEventListener('dragover', e => e.preventDefault());
 window.addEventListener('drop', e => e.preventDefault());
 
 async function start(){
+  settings.refresh();
   try{
     const me = await api('/me');
     $('driver-name').textContent = me.display_name;

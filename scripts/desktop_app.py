@@ -21,7 +21,7 @@ if not getattr(sys, 'frozen', False):
 
 from lmu_data_analysis.web_app import create_app
 
-TITLE = 'LMU 个人遥测工作台 V0.56'
+TITLE = 'LMU 个人遥测工作台 V0.6'
 APP_DIR = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData' / 'Local') / 'LMU Data Analysis'
 
 
@@ -64,6 +64,12 @@ def run_window(data_dir, report):
             window = webview.create_window(TITLE, url, width=1460, height=920, min_size=(860, 650),
                                            background_color='#121517', hidden=report is not None)
 
+            def choose_telemetry_directory():
+                selected = window.create_file_dialog(webview.FileDialog.FOLDER)
+                return selected[0] if selected else None
+
+            window.expose(choose_telemetry_directory)
+
             def check_window():
                 try:
                     if webview.renderer != 'edgechromium':
@@ -77,10 +83,12 @@ def run_window(data_dir, report):
                         # 等首页从本地服务读完档案，避免把空白页面视为启动成功。
                         info = window.evaluate_js("""(() => {
                           const loading = document.getElementById('archive-loading');
-                          return loading?.hidden ? {
+                          const canChoose = typeof window.pywebview?.api?.choose_telemetry_directory === 'function';
+                          return loading?.hidden && canChoose ? {
                             title: document.title,
                             archive: document.getElementById('archive-title').textContent,
-                            sessions: Number(document.getElementById('session-count').textContent)
+                            sessions: Number(document.getElementById('session-count').textContent),
+                            folder_picker: canChoose
                           } : null;
                         })()""")
                         if info:

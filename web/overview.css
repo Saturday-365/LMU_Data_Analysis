@@ -89,6 +89,12 @@
 }
 .recent-card:last-child { margin-bottom: 0; }
 .recent-card:hover { background: #263440; border-color: #597487; }
+.recent-card[aria-pressed="true"] {
+  background: #243540;
+  border-color: #83cbd4;
+  box-shadow: inset 3px 0 #83cbd4;
+}
+.preview-best { color: #ffd1b8; }
 .recent-card-label { min-width: 0; }
 .recent-card strong, .recent-card small { display: block; }
 .recent-card strong { font-size: 11px; line-height: 1.4; }
