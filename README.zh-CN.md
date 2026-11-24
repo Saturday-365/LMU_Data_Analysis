@@ -1,5 +1,7 @@
 # LMU Data Analysis
 
+> **本项目完全由 AI 生成。**
+
 [English](README.md) · **简体中文**
 
 面向 Le Mans Ultimate（LMU）车手的本地遥测工作台。导入游戏录制的 `.duckdb` 文件，回看驾驶曲线、比较单圈和长距离节奏，并跟踪自己在各赛道的圈速变化。

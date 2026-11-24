@@ -1,5 +1,7 @@
 # LMU Data Analysis
 
+> **This project was generated entirely by AI.**
+
 **English** · [简体中文](README.zh-CN.md)
 
 An open-source telemetry analyzer for **Le Mans Ultimate (LMU)** on Windows. Import native DuckDB recordings to compare racing laps and stints, inspect driving inputs, and track your lap times across sessions. The archive stays on your computer.
