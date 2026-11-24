@@ -2,6 +2,7 @@
 
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timezone
+import math
 from pathlib import Path
 from statistics import median, pstdev
 from threading import RLock
@@ -9,7 +10,7 @@ from uuid import uuid4
 
 from .alignment import extract_lap
 from .cli import summary
-from .reader import read_recording
+from .reader import digest, read_recording
 from .storage import BlobStore, SessionRepository
 from .timing import timing_summary
 from .inventory import inspect_channels
@@ -19,6 +20,16 @@ from .track_reference import load_reference
 from .comparison import compare_distance, layout_key, share_trajectory_frame
 from .pace import analyze_pace, distribution, setup_labels
 from .vehicles import normalized, vehicle_brand
+
+
+MIN_RECORDING_SECONDS = 60
+DUPLICATE_IMPORT_MESSAGE = '拒绝导入：相同内容的遥测已存在于档案。'
+
+
+class ImportRejected(ValueError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
 
 
 class TelemetryService:
@@ -108,21 +119,32 @@ class TelemetryService:
 
     def import_file(self, driver_id: str, path: Path, filename: str):
         with self.lock:
-            recording = read_recording(path)
-            existing = self.repository.find_hash(driver_id, recording.source_sha256)
-            if existing:
-                return self.repository.get_session(driver_id, existing["id"]), True
+            # 按内容判重，改名后的副本也无需再次解析。
+            sha256 = digest(path)
+            if self.repository.find_hash(driver_id, sha256):
+                raise ImportRejected('duplicate', DUPLICATE_IMPORT_MESSAGE)
+            recording = read_recording(path, expected_sha256=sha256)
+            duration = recording.clock_s[-1] - recording.clock_s[0]
+            if duration < MIN_RECORDING_SECONDS and not math.isclose(
+                duration, MIN_RECORDING_SECONDS, rel_tol=0, abs_tol=1e-9
+            ):
+                raise ImportRejected('recording_too_short',
+                                     f'已过滤：录制时长 {duration:.3f} 秒，少于 {MIN_RECORDING_SECONDS} 秒。')
+            if not recording.complete_laps:
+                raise ImportRejected('no_complete_lap', '已过滤：录制中没有完整圈。')
             session_id, blob_key = str(uuid4()), str(uuid4())
             recording.source_filename = filename
             document = summary(recording)
             self.blobs.commit(path, blob_key)
             try:
                 result = self.repository.insert_session(driver_id, session_id, blob_key, filename, document)
+                if result is None:
+                    raise ImportRejected('duplicate', DUPLICATE_IMPORT_MESSAGE)
             except Exception:
                 self.blobs.delete(blob_key)
                 raise
             self._remember((driver_id, session_id), recording)
-            return result, False
+            return result
 
     def trace(self, driver_id: str, session_id: str, lap_id: str):
         with self.lock:

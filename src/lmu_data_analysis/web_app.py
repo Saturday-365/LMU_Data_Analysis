@@ -15,7 +15,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from .models import TelemetryError
 from .comparison import layout_key
 from .storage import LocalBlobStore, SQLiteSessionRepository
-from .web_service import TelemetryService, catalog_overview, public_session
+from .web_service import ImportRejected, TelemetryService, catalog_overview, public_session
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_DRIVER_ID = "b9919ff0-6e03-4a15-91dc-68f58ee21516"
@@ -45,7 +45,7 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
     blobs = blobs or LocalBlobStore(directory / "recordings")
     identity = identity or LocalIdentity()
     service = TelemetryService(repository, blobs, directory / 'track-resources')
-    app = FastAPI(title="LMU Data Analysis", version="0.45.0-local", docs_url=None, redoc_url=None)
+    app = FastAPI(title="LMU Data Analysis", version="0.5.0-local", docs_url=None, redoc_url=None)
     app.state.service = service
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -147,13 +147,15 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
                     stream.write(chunk)
             if size == 0:
                 raise HTTPException(400, "文件为空")
-            row, duplicate = await run_in_threadpool(service.import_file, owner, staging, filename)
-            return JSONResponse({"session": public_session(row, True), "duplicate": duplicate},
-                                status_code=200 if duplicate else 201)
+            row = await run_in_threadpool(service.import_file, owner, staging, filename)
+            return {"session": public_session(row, True), "duplicate": False}
+        except ImportRejected as error:
+            return JSONResponse({"detail": str(error), "code": error.code},
+                                status_code=409 if error.code == 'duplicate' else 422)
         except TelemetryError as error:
             message = str(error).replace(str(staging), "所选文件")
-            if message.startswith('GPS Time: non-uniform'):
-                message = 'GPS 时钟不连续、重复或回退，无法可靠重建采样时间。'
+            if message.startswith('GPS Time: duplicate'):
+                message = 'GPS 时间戳重复、回退或采样间隔短于声明值，无法可靠重建采样时间。'
             raise HTTPException(422, f"无法解析遥测：{message}") from error
         except (OSError, sqlite3.Error) as error:
             raise HTTPException(500, "本地存储失败，请检查磁盘空间和目录权限") from error

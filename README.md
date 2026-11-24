@@ -2,13 +2,9 @@
 
 面向 Le Mans Ultimate（LMU）车手的本地遥测数据查看与圈速复盘工具。
 
-**当前状态：V0.2 本地实现已完成练习信息读取、按整场 / 圈次补录、恢复及保存，并提供经过验证的赛道资源接入和图层开关。尚无合格 Monza 几何资产，真实赛道参照保持不可用，继续显示双圈走线。56 项自动化检查（含真实样本）通过。**
+## 启动
 
-版本说明见 [V0.2 交付记录](docs/release-v0.2.md)、[练习信息约定](docs/practice-fields-v0.2.md)及[赛道资源调查与接入](docs/track-reference-v0.2.md)。已确认范围保留在 [V0.2 任务](docs/scope-v0.2.md)，历史说明见 [V0.1 交付记录](docs/release-v0.1.md)。
-
-## 启动网页
-
-Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.45.exe`。V0.45 首页展示最近一场正赛的驾驶段、近期录制及按赛道整理的排位与正赛表现。运行及构建方法见 [桌面版 V0.45](docs/desktop-v0.45.md)。
+Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.5.exe`。V0.5 拒绝重复遥测，导入要求录制时长至少 1 分钟且有至少 1 个完整圈。运行及构建方法见 [桌面版 V0.5](docs/desktop-v0.5.md)。
 
 双击根目录 `start-web.cmd`，再打开 **http://127.0.0.1:8765**。首次安装和操作说明见 [网页使用说明](docs/web-usage.md)。
 
@@ -66,6 +62,8 @@ LMU_Data_Analysis/
 5. [开发路线](docs/roadmap.md)
 6. [首份样本核验](docs/sample-verification.md)
 7. [读取模块使用说明](docs/reader-usage.md)
+
+V0.2 完成了练习信息读取、按整场或圈次补录、恢复和保存，以及赛道资源接入和图层开关。当时的 Monza 样本用双圈走线展示，56 项自动化检查通过。[V0.2 交付记录](docs/release-v0.2.md) · [练习信息约定](docs/practice-fields-v0.2.md) · [赛道资源调查与接入](docs/track-reference-v0.2.md) · [V0.2 任务](docs/scope-v0.2.md) · [V0.1 交付记录](docs/release-v0.1.md)
 
 ## 开发状态与技术选择
 

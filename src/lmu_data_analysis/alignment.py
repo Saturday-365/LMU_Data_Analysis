@@ -2,12 +2,18 @@
 
 from bisect import bisect_left, bisect_right
 from dataclasses import asdict
+from heapq import merge
 import math
 
 from .models import Recording, Series, TelemetryError, format_lap_time
 
 
-def continuous_at(times, values, timestamp, max_gap, distance=False):
+def crosses_clock_break(start, end, breaks):
+    index = bisect_right(breaks, start)
+    return index < len(breaks) and breaks[index] <= end
+
+
+def continuous_at(times, values, timestamp, max_gap, distance=False, *, clock_breaks=()):
     right = bisect_left(times, timestamp)
     if right < len(times) and abs(times[right]-timestamp) < 1e-8:
         value = values[right]
@@ -17,7 +23,8 @@ def continuous_at(times, values, timestamp, max_gap, distance=False):
     left = right-1
     a, b = values[left], values[right]
     gap = times[right]-times[left]
-    if a is None or b is None or gap > max_gap or (distance and b < a-0.01):
+    if (a is None or b is None or gap > max_gap or (distance and b < a-0.01)
+            or (clock_breaks and crosses_clock_break(times[left], times[right], clock_breaks))):
         return None, "missing"
     fraction = (timestamp-times[left])/gap
     return a+(b-a)*fraction, "interpolated"
@@ -38,6 +45,19 @@ def extract_lap(recording: Recording, number: int) -> dict:
     start, end = lap.start_s, lap.end_s
     clock = recording.clock_s
     timestamps = clock[bisect_left(clock, start):bisect_left(clock, end)]
+    breaks = recording.clock_breaks_s
+    separators = set()
+    if timestamps and breaks:
+        first = bisect_right(breaks, timestamps[0])
+        last = bisect_right(breaks, timestamps[-1])
+        # 图表、距离计时和区间分析共用空值断点，原始采样仍保存在 native 中。
+        markers = []
+        for boundary in breaks[first:last]:
+            index = bisect_left(timestamps, boundary)
+            markers.append((timestamps[index-1] + boundary) / 2)
+        if markers:
+            timestamps = list(merge(timestamps, markers))
+            separators = set(markers)
     native, aligned = {}, {}
     for key, series in recording.series.items():
         lo, hi = bisect_left(series.times_s, start), bisect_left(series.times_s, end)
@@ -50,10 +70,11 @@ def extract_lap(recording: Recording, number: int) -> dict:
             prior = bisect_right(series.times_s, start)-1
             item["state_at_start"] = None if prior < 0 else {
                 "event_time_s": series.times_s[prior], "value": series.values[prior]}
-            points = [event_at(series, t) for t in timestamps]
+            points = [(None, "missing") if t in separators else event_at(series, t) for t in timestamps]
         else:
             # Never interpolate using a point from the previous or following lap.
-            points = [continuous_at(times, values, t, 1.5/series.frequency_hz, key == "distance")
+            points = [(None, "missing") if t in separators else
+                      continuous_at(times, values, t, 1.5/series.frequency_hz, key == "distance", clock_breaks=breaks)
                       for t in timestamps]
         native[key] = item
         aligned[key] = {"unit": series.unit, "values": [point[0] for point in points],

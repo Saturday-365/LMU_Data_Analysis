@@ -46,7 +46,7 @@ class V02Tests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.folder = Path(self.temp.name)
         self.source = self.folder/'sample.duckdb'
-        fixture(self.source)
+        fixture(self.source, end_s=60)
         with duckdb.connect(str(self.source)) as c:
             c.execute("INSERT INTO metadata VALUES ('TrackName','Test')")
             c.execute("INSERT INTO metadata VALUES ('WeatherConditions','Cloudy')")
@@ -54,7 +54,7 @@ class V02Tests(unittest.TestCase):
                     ('Ambient Temperature',1,'C','i'), ('Track Temperature',1,'C','20+i'),
                     ('GPS Latitude',10,'deg','60+sin(i/100.0)*0.001'),('GPS Longitude',10,'deg','cos(i/100.0)*0.002')]:
                 c.execute('INSERT INTO channelsList VALUES (?,?,?)',[name,rate,unit])
-                c.execute(f'CREATE TABLE "{name}" AS SELECT {expression} AS value FROM range({30*rate}) t(i)')
+                c.execute(f'CREATE TABLE "{name}" AS SELECT {expression} AS value FROM range({60*rate+1}) t(i)')
         self.before = digest(self.source)
         self.data = self.folder/'data'
         self.client = TestClient(create_app(self.data, identity=Identity()))
@@ -77,7 +77,7 @@ class V02Tests(unittest.TestCase):
     def test_auto_values_zero_and_lap_range(self):
         full,lap = self.get(), self.get(self.lap)
         self.assertEqual(self.field(full,'fuel')['effective']['value']['min'],0)
-        self.assertEqual(self.field(full,'ambient')['effective']['value'],dict(min=0,max=29,first=0,last=29))
+        self.assertEqual(self.field(full,'ambient')['effective']['value'],dict(min=0,max=60,first=0,last=60))
         self.assertEqual(self.field(lap,'ambient')['effective']['value'],dict(min=5,max=14,first=5,last=14))
         self.assertEqual(self.field(full,'wind_speed')['effective']['state'],'not_recorded')
         self.assertEqual(self.field(full,'weather')['effective']['value'],'Cloudy')
@@ -94,9 +94,10 @@ class V02Tests(unittest.TestCase):
         self.assertEqual(f['effective']['valid_range'],{'scope':self.lap})
         with TestClient(create_app(self.data,identity=Identity())) as client:
             self.assertEqual(self.field(self.get(self.lap,client),'fuel')['effective']['value'],0)
-            duplicate=client.post('/api/v1/sessions',content=self.source.read_bytes(),headers={'x-lmu-client':'web','x-filename':'same.duckdb'}).json()
-            self.assertTrue(duplicate['duplicate'])
-            self.assertEqual(duplicate['session']['laps'],self.session['laps'])
+            duplicate=client.post('/api/v1/sessions',content=self.source.read_bytes(),headers={'x-lmu-client':'web','x-filename':'same.duckdb'})
+            self.assertEqual(duplicate.status_code,409)
+            self.assertEqual(duplicate.json()['code'],'duplicate')
+            self.assertEqual(client.get(self.base).json()['laps'],self.session['laps'])
         self.edit({'fuel':None},self.lap)
         self.assertEqual(self.field(self.get(self.lap),'fuel')['effective']['value'],50)
         self.edit({'fuel':None})

@@ -21,8 +21,8 @@ from lmu_data_analysis.models import format_lap_time
 from lmu_data_analysis.reader import digest
 
 
-def fixture(path):
-    """30 s synthetic recording: out-lap, two 10 s laps, trailing fragment."""
+def fixture(path, *, end_s=29.99):
+    """Synthetic recording with an out-lap, two 10 s laps and a trailing fragment."""
     with duckdb.connect(str(path)) as c:
         c.execute("CREATE TABLE metadata(key VARCHAR,value VARCHAR)")
         c.executemany("INSERT INTO metadata VALUES (?,?)", [
@@ -40,7 +40,7 @@ def fixture(path):
                 "Throttle Pos": "i%101", "Brake Pos": "i%51",
                 "Steering Pos": "(i%201)-100", "Lap Dist": "((i/10.0+5)%10)*100",
             }[name]
-            c.execute(f'INSERT INTO "{name}" SELECT {expression} FROM range({rate*30}) t(i)')
+            c.execute(f'INSERT INTO "{name}" SELECT {expression} FROM range({int(rate*end_s)+1}) t(i)')
         c.execute("CREATE TABLE eventsList(eventName VARCHAR,unit VARCHAR)")
         for name, unit, rows in [
             ("Lap","",[(0,0),(5,1),(15,2),(25,3)]),
@@ -144,10 +144,33 @@ class ReaderTests(unittest.TestCase):
         self.assertIsNone(values[2])
         self.assertIsNone(values[3])
 
-    def test_clock_pause_is_explicitly_rejected(self):
-        self.change('UPDATE "GPS Time" SET value=value+1 WHERE rowid>=1000')
-        with self.assertRaisesRegex(TelemetryError,'non-uniform'):
-            read_recording(self.source)
+    def test_clock_pause_retains_laps_and_breaks_aligned_channels(self):
+        self.change('UPDATE "GPS Time" SET value=value+1.0625 WHERE rowid>=1003')
+        for event in ('Lap', 'Lap Time', 'Gear'):
+            self.change(f'UPDATE "{event}" SET ts=ts+1.0625 WHERE ts>=10.03')
+        self.change('UPDATE "Lap Time" SET value=11.0625 WHERE ts=16.0625')
+        recording = read_recording(self.source)
+        self.assertEqual([lap.lap_time_s for lap in recording.complete_laps], [11.0625, 10])
+        self.assertTrue(any(d.code == 'gps_clock_gap' for d in recording.diagnostics))
+        self.assertTrue(all(check['matched'] for check in recording.distance_boundary_checks))
+        aligned_lap = extract_lap(recording, 1)
+        clock = aligned_lap['aligned']['session_time_s']
+        right = clock.index(recording.clock_breaks_s[0])
+        self.assertAlmostEqual(clock[right-2], 10.02)
+        self.assertAlmostEqual(clock[right], 11.0925)
+        for channel in aligned_lap['aligned']['channels'].values():
+            self.assertIsNone(channel['values'][right-1])
+            self.assertEqual(channel['provenance'][right-1], 'missing')
+        self.assertAlmostEqual(aligned_lap['aligned']['channels']['speed']['values'][right], 110.03)
+        self.assertNotIn(clock[right-1], aligned_lap['native']['speed']['session_time_s'])
+        self.assertEqual(len(extract_lap(recording, 2)['aligned']['session_time_s']), 1000)
+
+    def test_duplicate_reversed_and_early_clock_samples_are_rejected(self):
+        for timestamp in (9.99, 9.98, 9.995):
+            with self.subTest(timestamp=timestamp):
+                self.change(f'UPDATE "GPS Time" SET value={timestamp} WHERE rowid=1000')
+                with self.assertRaisesRegex(TelemetryError, 'duplicate, decreasing or shorter'):
+                    read_recording(self.source)
 
     def test_event_duplicate_timestamps_rejected(self):
         self.change('INSERT INTO "Gear" VALUES (4,5)')
@@ -218,6 +241,7 @@ class ReaderTests(unittest.TestCase):
     def test_no_interpolation_across_large_gap_or_reverse_distance(self):
         self.assertEqual(continuous_at([0,1],[0,10],0.5,0.02),(None,'missing'))
         self.assertEqual(continuous_at([0,.1],[100,0],.05,.15,True),(None,'missing'))
+        self.assertEqual(continuous_at([0,.11],[0,10],.05,.15,clock_breaks=[.11]),(None,'missing'))
 
 
 @unittest.skipUnless(os.environ.get('LMU_SAMPLE_PATH'),'Set LMU_SAMPLE_PATH for real sample acceptance')

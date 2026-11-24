@@ -1,7 +1,7 @@
 """Native GPS samples projected into one recording-wide local coordinate frame."""
 from bisect import bisect_left
 import math
-from .alignment import continuous_at
+from .alignment import continuous_at, crosses_clock_break
 
 EARTH_RADIUS_M = 6371000.0
 
@@ -41,11 +41,13 @@ def lap_trajectory(recording, ordinal):
         dl = bisect_left(distance.times_s, lap.start_s)
         dr = bisect_left(distance.times_s, lap.end_s)
         dtimes, dvalues = distance.times_s[dl:dr], distance.values[dl:dr]
+    breaks = recording.clock_breaks_s
     points, previous, gaps = [], None, 0
     for index in range(left, right):
         timestamp = latitude.times_s[index]
         a, b = pairs[index]
-        dist = continuous_at(dtimes, dvalues, timestamp, 1.5/distance.frequency_hz, True)[0] if distance else None
+        dist = continuous_at(dtimes, dvalues, timestamp, 1.5/distance.frequency_hz, True,
+                             clock_breaks=breaks)[0] if distance else None
         point = {'time_s':timestamp-lap.start_s, 'distance_m':dist,
                  'x_m':None, 'y_m':None, 'break_before':True}
         if valid_coordinate(a,b):
@@ -54,7 +56,8 @@ def lap_trajectory(recording, ordinal):
             if previous:
                 elapsed = timestamp-previous[0]
                 jump = math.hypot(x-previous[1],y-previous[2])
-                contiguous = 0 < elapsed <= 1.5/latitude.frequency_hz and jump <= max(25.0,elapsed*140.0)
+                contiguous = (0 < elapsed <= 1.5/latitude.frequency_hz and jump <= max(25.0,elapsed*140.0)
+                              and not crosses_clock_break(previous[0], timestamp, breaks))
                 point['break_before'] = not contiguous
                 if not contiguous:
                     gaps += 1

@@ -56,7 +56,7 @@ flowchart LR
 | --- | --- |
 | `GET /api/v1/health`、`GET /api/v1/me` | 状态及当前车手 |
 | `GET /api/v1/sessions` | 当前车手练习摘要 |
-| `POST /api/v1/sessions` | 文件原始字节；URL 编码 `X-Filename`、`X-LMU-Client: web`；新记录 201，重复 200 |
+| `POST /api/v1/sessions` | 文件原始字节，URL 编码 `X-Filename`，请求头 `X-LMU-Client: web`。新记录返回 201，内容重复返回 409，录制不足 60 秒、没有完整圈或无法解析返回 422。 |
 | `GET /api/v1/sessions/{id}` | 圈次、单位目录、片段与诊断 |
 | `GET /api/v1/sessions/{id}/laps/{lap_id}/trace` | 单圈时间、距离、核心通道及逐点来源 |
 | `GET /api/v1/sessions/{id}/timing` | 全部圈次、核对后的三个分段与统计摘要 |

@@ -42,7 +42,9 @@ async function api(path, options = {}){
   const response = await fetch('/api/v1' + path, options);
   if(response.ok) return response.json();
   const problem = await response.json().catch(() => null);
-  throw Error(typeof problem?.detail === 'string' ? problem.detail : `请求失败（${response.status}）`);
+  const error = Error(typeof problem?.detail === 'string' ? problem.detail : `请求失败（${response.status}）`);
+  error.code = problem?.code;
+  throw error;
 }
 
 function sessionDate(session){
@@ -284,7 +286,7 @@ async function importFiles(input){
   $('import-report').hidden = false;
   $('import-report').open = false;
   $('import-results').replaceChildren();
-  let imported = 0, duplicates = 0, failures = 0;
+  let imported = 0, duplicates = 0, filtered = 0, failures = 0;
   try{
     for(const [index, file] of files.entries()){
       $('import-summary').textContent = `正在处理 ${index + 1} / ${files.length}：${file.name}`;
@@ -296,19 +298,20 @@ async function importFiles(input){
           method: 'POST', body: file,
           headers: {'Content-Type':'application/octet-stream', 'X-Filename':encodeURIComponent(file.name), 'X-LMU-Client':'web'},
         });
-        if(outcome.duplicate) duplicates++;
-        else imported++;
-        result.textContent = `${file.name} · ${outcome.duplicate ? '已存在' : '已导入'} · ${outcome.session.complete_lap_count} 个完整圈`;
+        imported++;
+        result.textContent = `${file.name} · 已导入 · ${outcome.session.complete_lap_count} 个完整圈`;
       }catch(error){
-        failures++;
+        if(error.code === 'duplicate') duplicates++;
+        else if(error.code === 'recording_too_short' || error.code === 'no_complete_lap') filtered++;
+        else failures++;
         result.className = 'import-failure';
         result.textContent = `${file.name} · ${error.message}`;
       }
       $('import-results').append(result);
     }
-    $('import-summary').textContent = `已导入 ${imported} 份 · 重复 ${duplicates} 份 · 失败 ${failures} 份`;
-    $('import-report').open = failures > 0;
-    await refreshSessions();
+    $('import-summary').textContent = `已导入 ${imported} 份 · 重复拒绝 ${duplicates} 份 · 已过滤 ${filtered} 份 · 失败 ${failures} 份`;
+    $('import-report').open = duplicates + filtered + failures > 0;
+    if(imported) await refreshSessions();
     showArchive();
   }catch(error){
     notice(`已完成文件处理，刷新档案时出错：${error.message}`, true);

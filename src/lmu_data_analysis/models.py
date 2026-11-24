@@ -57,6 +57,7 @@ class Recording:
     timing_events: dict[str, list[tuple]] = field(default_factory=dict)
     position_series: dict[str, Series] = field(default_factory=dict)
     pit_events: list[tuple] = field(default_factory=list)
+    clock_breaks_s: list[float] = field(default_factory=list)
 
     @property
     def complete_laps(self) -> list[Segment]:

@@ -22,7 +22,7 @@ class SessionRepository(Protocol):
                       interval_id: str | None = None) -> dict: ...
     def delete_interval(self, driver_id: str, layout: tuple[str, str], interval_id: str) -> None: ...
     def insert_session(self, driver_id: str, session_id: str, blob_key: str,
-                       filename: str, summary: dict) -> dict: ...
+                       filename: str, summary: dict) -> dict | None: ...
 
 
 class BlobStore(Protocol):
@@ -223,9 +223,12 @@ class SQLiteSessionRepository:
 
     def insert_session(self, driver_id, session_id, blob_key, filename, summary):
         with self.connection() as c:
-            c.execute("INSERT INTO sessions VALUES (?,?,?,?,?,?,?)", (
+            inserted = c.execute(
+                "INSERT INTO sessions VALUES (?,?,?,?,?,?,?) ON CONFLICT(driver_id, sha256) DO NOTHING", (
                 session_id, driver_id, blob_key, filename, summary["source_sha256"],
                 datetime.now(timezone.utc).isoformat(), json.dumps(summary, ensure_ascii=False)))
+            if inserted.rowcount == 0:
+                return None
             c.executemany("INSERT INTO laps VALUES (?,?,?,?,?,?)", [
                 (str(uuid4()), session_id, lap["complete_lap_number"], lap["source_lap"],
                  lap["lap_time_s"], lap["validity"]) for lap in summary["complete_laps"]])

@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import duckdb
 from fastapi.testclient import TestClient
 from test_reader import ROOT, fixture
 from lmu_data_analysis.web_app import create_app, LOCAL_DRIVER_ID
@@ -22,7 +23,7 @@ class WebTests(unittest.TestCase):
         self.folder = Path(self.temp.name).resolve()
         self.addCleanup(self.cleanup)
         self.source = self.folder / 'sample.duckdb'
-        fixture(self.source)
+        fixture(self.source, end_s=60)
         self.payload = self.source.read_bytes()
         self.data = self.folder / 'data'
         self.app = create_app(self.data)
@@ -56,10 +57,11 @@ class WebTests(unittest.TestCase):
         with TestClient(create_app(self.data)) as restarted:
             self.assertEqual(restarted.get('/api/v1/sessions').json()['items'][0]['id'], session['id'])
             self.assertEqual(restarted.get(url).json(), trace)
-            duplicate = self.upload(restarted)
-            self.assertEqual(duplicate.status_code, 200)
-            self.assertTrue(duplicate.json()['duplicate'])
-            self.assertEqual(duplicate.json()['session']['laps'], session['laps'])
+            with patch('lmu_data_analysis.web_service.read_recording', side_effect=AssertionError('duplicate was parsed')):
+                duplicate = self.upload(restarted, **{'x-filename':'renamed.duckdb'})
+            self.assertEqual(duplicate.status_code, 409)
+            self.assertEqual(duplicate.json()['code'], 'duplicate')
+            self.assertEqual(restarted.get(url).json(), trace)
         self.assertEqual(len(list((self.data/'recordings').glob('*.duckdb'))), 1)
         self.assertEqual(list((self.data/'recordings').glob('*.upload')), [])
 
@@ -83,8 +85,6 @@ class WebTests(unittest.TestCase):
         self.assertEqual(me['id'], LOCAL_DRIVER_ID)
 
     def test_saved_intervals_stay_in_owner_and_layout_across_restart(self):
-        import duckdb
-
         with duckdb.connect(str(self.source)) as connection:
             connection.execute("INSERT INTO metadata VALUES ('TrackName', 'Synthetic test track')")
         headers = {'x-lmu-client': 'web'}
@@ -135,8 +135,6 @@ class WebTests(unittest.TestCase):
         self.assertEqual(latest['pace'], {'count':2, 'best_s':10, 'best_ordinal':1, 'median_s':10, 'stddev_s':0})
 
     def test_compare_across_sessions_checks_layout_ownership_and_delta(self):
-        import duckdb
-
         with duckdb.connect(str(self.source)) as connection:
             connection.execute("INSERT INTO metadata VALUES ('TrackName', 'Synthetic test track')")
         with TestClient(create_app(self.data, identity=TestIdentity())) as client:
@@ -165,11 +163,10 @@ class WebTests(unittest.TestCase):
             self.assertEqual(compare(other_layout).status_code, 422)
 
     def test_trace_with_gps_and_invalid_optional_coordinate_unit(self):
-        import duckdb
         with duckdb.connect(str(self.source)) as c:
             for name, expression in [('GPS Latitude','60+sin(i/100.0)*0.001'),('GPS Longitude','cos(i/100.0)*0.002')]:
                 c.execute('INSERT INTO channelsList VALUES (?,10,?)',[name,'deg'])
-                c.execute(f'CREATE TABLE "{name}" AS SELECT {expression} AS value FROM range(300) t(i)')
+                c.execute(f'CREATE TABLE "{name}" AS SELECT {expression} AS value FROM range(601) t(i)')
         session=self.upload(content=self.source.read_bytes()).json()['session']
         url=f"/api/v1/sessions/{session['id']}/laps/{session['laps'][0]['id']}/trace"
         result=self.client.get(url).json()
@@ -205,7 +202,6 @@ class WebTests(unittest.TestCase):
             self.assertEqual(restarted.get(base+'/timing').json(),timing)
 
     def test_wrong_sector_unit_does_not_break_core_import(self):
-        import duckdb
         with duckdb.connect(str(self.source)) as connection:
             connection.execute("INSERT INTO eventsList VALUES ('Last Sector1','ms')")
             connection.execute('CREATE TABLE "Last Sector1"(ts DOUBLE,value DOUBLE)')
@@ -222,6 +218,37 @@ class WebTests(unittest.TestCase):
             self.assertEqual(self.upload(limited, content=b'0'*17).status_code, 413)
         self.assertEqual(self.client.get('/api/v1/sessions').json()['items'], [])
         self.assertEqual(list((self.data/'recordings').iterdir()), [])
+
+    def test_import_requires_one_minute_and_one_complete_lap(self):
+        short = self.folder/'short.duckdb'
+        fixture(short, end_s=59.99)
+        response = self.upload(content=short.read_bytes())
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()['code'], 'recording_too_short')
+
+        with duckdb.connect(str(self.source)) as connection:
+            connection.execute('DELETE FROM "Lap" WHERE value >= 2')
+        response = self.upload(content=self.source.read_bytes())
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()['code'], 'no_complete_lap')
+        self.assertEqual(self.client.get('/api/v1/sessions').json()['items'], [])
+        self.assertEqual(list((self.data/'recordings').iterdir()), [])
+
+        with duckdb.connect(str(self.source)) as connection:
+            connection.execute('INSERT INTO "Lap" VALUES (15, 2)')
+        response = self.upload(content=self.source.read_bytes())
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()['session']['duration_s'], 60)
+        self.assertEqual(response.json()['session']['complete_lap_count'], 1)
+
+    def test_conflict_at_insert_also_rejects_and_removes_new_blob(self):
+        self.assertEqual(self.upload().status_code, 201)
+        with patch.object(self.app.state.service.repository, 'find_hash', return_value=None):
+            response = self.upload()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()['code'], 'duplicate')
+        self.assertEqual(len(self.client.get('/api/v1/sessions').json()['items']), 1)
+        self.assertEqual(len(list((self.data/'recordings').iterdir())), 1)
 
     def test_local_boundary_and_static_isolation(self):
         self.assertEqual(self.client.post('/api/v1/sessions', content=b'').status_code, 403)

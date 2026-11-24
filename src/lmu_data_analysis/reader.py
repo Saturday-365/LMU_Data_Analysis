@@ -9,9 +9,11 @@ from pathlib import Path
 
 import duckdb
 
+from .alignment import crosses_clock_break
 from .models import Diagnostic, Recording, Segment, Series, TelemetryError
 
 
+CLOCK_STEP_TOLERANCE_S = 1e-6
 SAFE_METADATA = {
     "Version", "RecordingTime", "SessionTime", "SessionType", "TrackName",
     "TrackLayout", "WeatherConditions", "CarName", "CarClass",
@@ -145,10 +147,22 @@ def _read(connection, path: Path, before: str) -> Recording:
     clock = ordered_values(connection, "GPS Time")
     if len(clock) < 2 or any(numeric(t) is None for t in clock):
         raise TelemetryError("GPS Time: need at least two finite timestamps")
-    if any(not math.isclose(b-a, 1/clock_frequency, abs_tol=1e-6, rel_tol=0)
-           for a, b in zip(clock, clock[1:])):
-        raise TelemetryError("GPS Time: non-uniform, duplicate or decreasing clock; implicit channel timing is unsafe")
     diagnostics = [Diagnostic("implicit_time_axis", "Continuous times reconstructed from GPS Time and declared frequency; source sampling phase not independently verified")]
+    step = 1/clock_frequency
+    clock_breaks = []
+    longest_step = 0.0
+    # 保留跳变前后的原始时间和样本行位，避免后续低频通道整体错位。
+    for left, right in zip(clock, clock[1:]):
+        elapsed = right - left
+        if elapsed <= 0 or elapsed < step - CLOCK_STEP_TOLERANCE_S:
+            raise TelemetryError("GPS Time: duplicate, decreasing or shorter-than-declared sampling intervals")
+        if elapsed > step + CLOCK_STEP_TOLERANCE_S:
+            clock_breaks.append(right)
+            longest_step = max(longest_step, elapsed)
+    if clock_breaks:
+        diagnostics.append(Diagnostic("gps_clock_gap",
+                                      f"检测到 {len(clock_breaks)} 处 GPS 采样间断，最长采样间隔 {longest_step:.6g} 秒。"
+                                      "已保留原始计时，遥测曲线在间断处断开。", "GPS Time"))
     catalog = []
     for name, frequency, unit in channels:
         catalog.append({"source_name": name, "kind": "continuous", "unit": unit,
@@ -212,7 +226,8 @@ def _read(connection, path: Path, before: str) -> Recording:
         resets = [(distance.times_s[i-1], distance.times_s[i])
                   for i in range(1, len(distance.times_s))
                   if distance.values[i-1] is not None and distance.values[i] is not None
-                  and distance.values[i-1]-distance.values[i] > threshold]
+                  and distance.values[i-1]-distance.values[i] > threshold
+                  and not crosses_clock_break(distance.times_s[i-1], distance.times_s[i], clock_breaks)]
         for previous, current in zip(lap_rows, lap_rows[1:]):
             if current[1] == previous[1]+1:
                 timestamp = current[0]
@@ -258,14 +273,14 @@ def _read(connection, path: Path, before: str) -> Recording:
                                        [numeric(value) for value in values], frequency,
                                        'reconstructed_gps_stride', False)
     return Recording(path.name, before, metadata, clock, catalog, series, segments, diagnostics, checks, timing_events,
-                     position_series, pit_events=pits)
+                     position_series, pit_events=pits, clock_breaks_s=clock_breaks)
 
 
-def read_recording(source: str | Path) -> Recording:
+def read_recording(source: str | Path, *, expected_sha256: str | None = None) -> Recording:
     path = Path(source).resolve()
     if not path.is_file():
         raise TelemetryError(f"Telemetry file not found: {path}")
-    before = digest(path)
+    before = digest(path) if expected_sha256 is None else expected_sha256
     try:
         with duckdb.connect(str(path), read_only=True, config={
             "enable_external_access": "false", "autoload_known_extensions": "false",
