@@ -15,7 +15,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from .models import TelemetryError
 from .comparison import layout_key
 from .storage import LocalBlobStore, SQLiteSessionRepository
-from .web_service import TelemetryService, public_session
+from .web_service import TelemetryService, catalog_overview, public_session
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_DRIVER_ID = "b9919ff0-6e03-4a15-91dc-68f58ee21516"
@@ -45,7 +45,7 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
     blobs = blobs or LocalBlobStore(directory / "recordings")
     identity = identity or LocalIdentity()
     service = TelemetryService(repository, blobs, directory / 'track-resources')
-    app = FastAPI(title="LMU Data Analysis", version="0.3.0-local", docs_url=None, redoc_url=None)
+    app = FastAPI(title="LMU Data Analysis", version="0.4.0-local", docs_url=None, redoc_url=None)
     app.state.service = service
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -80,7 +80,7 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
 
     @app.get("/api/v1/sessions")
     def sessions(request: Request):
-        return {"items": [public_session(row) for row in repository.list_sessions(driver(request)["id"])]}
+        return catalog_overview(repository.list_sessions(driver(request)["id"]))
 
     @app.get("/api/v1/sessions/{session_id}")
     def session_detail(session_id: str, request: Request):

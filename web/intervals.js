@@ -10,24 +10,27 @@ const METRICS = [
 const WRITE_HEADERS = {'X-LMU-Client':'web', 'Content-Type':'application/json'};
 
 export class IntervalReview {
-  constructor(api,focus,placeCursor){
+  constructor(api,focus,placeCursor,selection){
     this.api = api;
     this.focus = focus;
     this.placeCursor = placeCursor;
+    this.selection = selection;
     this.library = $('interval-presets');
     this.name = $('interval-name');
     this.start = $('interval-start');
     this.end = $('interval-end');
     this.status = $('interval-library-status');
-    this.originButton = $('interval-mark-start');
-    this.endButton = $('interval-mark-end');
+    this.markButton = $('interval-pick');
+    this.markStatus = $('interval-pick-status');
     this.saveButton = $('interval-save');
     this.removeButton = $('interval-delete');
     this.library.onchange = () => this.select(this.library.value);
     this.saveButton.onclick = () => this.save();
     this.removeButton.onclick = () => this.remove();
-    this.originButton.onclick = () => this.capture(this.start);
-    this.endButton.onclick = () => this.capture(this.end);
+    this.markButton.onclick = () => this.toggleMarking();
+    document.addEventListener('keydown',event => {
+      if(event.key === 'Escape' && this.marking) this.cancelMarking();
+    });
     $('interval-form').onsubmit = event => {event.preventDefault(); this.analyze();};
     $('interval-metric-note').textContent =
       `刹车 ≥ ${BRAKE_THRESHOLD}%，回油 ≥ ${THROTTLE_THRESHOLD}% 且在最低速度点之后。动作需持续至少 0.15 秒。`;
@@ -36,13 +39,14 @@ export class IntervalReview {
 
   clear(){
     this.context = null;
-    this.lastDistance = null;
+    this.applied = null;
     this.presets = [];
     $('comparison-interval').hidden = true;
     this.status.textContent = '';
     $('interval-result').textContent = '';
     $('interval-metrics').hidden = true;
-    this.toggleCapture();
+    this.markButton.disabled = true;
+    this.cancelMarking();
   }
 
   setComparison(session,traces,delta){
@@ -53,6 +57,7 @@ export class IntervalReview {
     $('interval-library').hidden = !delta?.values || !layoutKey(session.metadata);
     if(!delta?.values) return;
     this.context = {traces, delta, url:`/sessions/${session.id}/intervals`, ready:false};
+    this.markButton.disabled = false;
     this.defaultBounds();
     this.library.replaceChildren(new Option('新建区间',''));
     this.name.value = '';
@@ -66,20 +71,62 @@ export class IntervalReview {
     this.end.value = Math.floor(distances.at(-1));
   }
 
-  recordCursor(value,axis){
-    if(axis !== 'distance') this.lastDistance = null;
-    else if(this.context && Number.isFinite(value)) this.lastDistance = value;
-    this.toggleCapture();
+  toggleMarking(){
+    if(!this.context) return;
+    if(this.marking){this.cancelMarking();return;}
+    this.selection.prepare();
+    this.marking = true;
+    this.anchor = null;
+    this.markButton.setAttribute('aria-pressed','true');
+    this.markButton.textContent = '取消标记';
+    this.markStatus.textContent = '在曲线上拖选，或在曲线或走线上依次点击两端。';
+    this.selection.active(true);
   }
 
-  toggleCapture(){
-    this.originButton.disabled = this.endButton.disabled = this.lastDistance == null;
+  cancelMarking(){
+    this.marking = false;
+    this.anchor = null;
+    this.markButton.setAttribute('aria-pressed','false');
+    this.markButton.textContent = '标记区间';
+    this.markStatus.textContent = '';
+    this.selection.active(false);
+    this.selection.highlight(this.applied);
   }
 
-  capture(input){
-    if(this.lastDistance == null) return;
+  clip(distance){
     const distances = this.context.delta.distance_m;
-    input.value = Math.max(distances[0], Math.min(distances.at(-1), Number(this.lastDistance.toFixed(2))));
+    return Math.max(distances[0], Math.min(distances.at(-1), Number(distance.toFixed(2))));
+  }
+
+  markPoint(value){
+    if(!this.marking || !Number.isFinite(value)) return;
+    if(this.anchor == null){
+      this.anchor = this.clip(value);
+      this.selection.highlight([this.anchor,this.anchor]);
+      this.markStatus.textContent = `已选 ${this.anchor.toFixed(2)} m，点击另一端完成标记。`;
+      return;
+    }
+    this.applyMark([this.anchor,value]);
+  }
+
+  previewMark(bounds){
+    if(!this.marking) return;
+    this.selection.highlight(bounds ? bounds.map(value => this.clip(value)).sort((a,b) => a-b)
+      : this.anchor == null ? this.applied : [this.anchor,this.anchor]);
+  }
+
+  applyMark(bounds){
+    if(!this.marking) return;
+    const [start,end] = bounds.map(value => this.clip(value)).sort((a,b)=>a-b);
+    if(!(start < end)){
+      this.markStatus.textContent = '请选两个不同的距离位置。';
+      this.previewMark(null);
+      return;
+    }
+    this.start.value = start;
+    this.end.value = end;
+    this.analyze();
+    this.markStatus.textContent = `已标记 ${start.toFixed(2)}–${end.toFixed(2)} m`;
   }
 
   updateButtons(busy){
@@ -176,7 +223,10 @@ export class IntervalReview {
     }
     const [start,end] = bounds;
     const difference = intervalDelta(this.context.delta,start,end);
+    this.applied = bounds;
+    this.cancelMarking();
     this.focus(start,end);
+    this.selection.highlight(bounds);
     if(difference == null){
       result.textContent = '区间包含未能对齐的样点，无法计算区间得失。';
     }else if(Math.abs(difference) < .0005){

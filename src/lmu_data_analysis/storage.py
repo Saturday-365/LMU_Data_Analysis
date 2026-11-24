@@ -193,20 +193,23 @@ class SQLiteSessionRepository:
         result["summary"] = json.loads(result.pop("summary_json"))
         model = json.loads(result.pop('model_annotation', None) or 'null')
         result['vehicle_model'] = model['value'] if model and model['state'] == 'known' else None
+        result['brand_override'] = json.loads(result.pop('brand_annotation', None) or 'null')
         return result
 
     def list_sessions(self, driver_id):
         with self.connection() as c:
             return [self._decode(row) for row in c.execute(
-                "SELECT s.*, a.value_json AS model_annotation FROM sessions s LEFT JOIN annotations a "
-                "ON a.session_id=s.id AND a.scope='session' AND a.field='model' "
+                "SELECT s.*, a.value_json AS model_annotation, b.value_json AS brand_annotation FROM sessions s "
+                "LEFT JOIN annotations a ON a.session_id=s.id AND a.scope='session' AND a.field='model' "
+                "LEFT JOIN annotations b ON b.session_id=s.id AND b.scope='session' AND b.field='brand' "
                 "WHERE s.driver_id=? ORDER BY s.created_at DESC,s.id DESC", (driver_id,))]
 
     def get_session(self, driver_id, session_id):
         with self.connection() as c:
             result = self._decode(c.execute(
-                "SELECT s.*, a.value_json AS model_annotation FROM sessions s LEFT JOIN annotations a "
-                "ON a.session_id=s.id AND a.scope='session' AND a.field='model' "
+                "SELECT s.*, a.value_json AS model_annotation, b.value_json AS brand_annotation FROM sessions s "
+                "LEFT JOIN annotations a ON a.session_id=s.id AND a.scope='session' AND a.field='model' "
+                "LEFT JOIN annotations b ON b.session_id=s.id AND b.scope='session' AND b.field='brand' "
                 "WHERE s.driver_id=? AND s.id=?", (driver_id, session_id)).fetchone())
             if result:
                 result["laps"] = [dict(row) for row in c.execute(

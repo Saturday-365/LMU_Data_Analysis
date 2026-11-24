@@ -2,6 +2,7 @@
 import duckdb
 from .reader import digest, ordered_values, numeric
 from .models import TelemetryError
+from .vehicles import identify_brand
 
 
 def field(label, group, kind='text', unit='', varying=False, **extra):
@@ -9,6 +10,7 @@ def field(label, group, kind='text', unit='', varying=False, **extra):
 
 
 FIELDS = {
+    'brand': field('品牌', '车辆'),
     'car': field('车辆标识（不等同标准车型）', '车辆', metadata='CarName'),
     'model': field('车型', '车辆'),
     'class': field('组别', '车辆', metadata='CarClass'),
@@ -110,6 +112,7 @@ def context_document(session, recording, extracted, annotations, lap_id=None):
     start, end = (segment.start_s, segment.end_s) if segment else (recording.clock_s[0], recording.clock_s[-1])
     channels, metadata_notes = extracted
     rows = {(a['scope'], a['field']): a for a in annotations}
+    model = rows.get(('session', 'model'), {}).get('data', {}).get('value')
     fields = []
     for key, spec in FIELDS.items():
         original = dict(value=None, state='not_recorded', source='telemetry', unit=spec['unit'],
@@ -120,6 +123,11 @@ def context_document(session, recording, extracted, annotations, lap_id=None):
             if value:
                 original.update(value=value, state='known', reason='文件元数据原值',
                                 valid_range={'scope': 'session'})
+        if key == 'brand':
+            brand, source = identify_brand(recording.metadata, model)
+            original.update(value=brand, state='known' if brand else 'unknown', source_field='CarName',
+                            reason={'entry':'本地参赛涂装映射', 'name':'原始标识包含品牌名',
+                                    'model':'根据已补录车型识别'}.get(source, '原始标识不足，请补录品牌。'))
         if key == 'weather' and metadata_notes['weather_raw']:
             original.update(value=None if lap else metadata_notes['weather_raw'], state='unknown' if lap else 'known',
                             reason='天气元数据快照；生效时刻未知，不能代表所有圈次',

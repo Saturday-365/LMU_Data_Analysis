@@ -36,7 +36,8 @@ export class PracticeConditions {
     const field=key=>data.fields.find(item=>item.key===key);
     const effective=key=>field(key).effective;
     const known=key=>effective(key).state==='known'?effective(key).value:null;
-    $('car-name').textContent=[known('model')||known('car'),known('class')].filter(Boolean).join(' · ')||'未知车辆';
+    const vehicle=known('model')?[known('model')]:[known('brand'),known('car')];
+    $('car-name').textContent=[...vehicle,known('class')].filter(Boolean).join(' · ')||'未知车辆';
     $('track-name').textContent=trackName({TrackName:known('track'),TrackLayout:known('layout')});
     $('session-type').textContent=typeLabel(known('session_type'));
     $('condition-summary').textContent=['ambient','track_temp','fuel','recorded_at'].map(key=>{

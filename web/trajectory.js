@@ -19,7 +19,13 @@ export class TrajectoryMap {
     root.addEventListener('wheel',event=>{if(!this.hasData)return;event.preventDefault();this.disableFollow();this.zoom(Math.exp(-Math.sign(event.deltaY)*.25),this.mouse(event));},{passive:false});
     root.addEventListener('pointerdown',event=>{if(!this.hasData||event.button!==0)return;this.disableFollow();this.drag={start:this.mouse(event),center:[...this.center],moved:false};root.setPointerCapture(event.pointerId);});
     root.addEventListener('pointermove',event=>{if(this.drag){const [x,y]=this.mouse(event),[sx,sy]=this.drag.start;if(Math.hypot(x-sx,y-sy)>3)this.drag.moved=true;this.center=[this.drag.center[0]-(x-sx)/this.scale,this.drag.center[1]+(y-sy)/this.scale];this.manuallyMoved=true;this.draw();}else this.pick(this.mouse(event));});
-    root.addEventListener('pointerup',event=>{if(this.drag&&!this.drag.moved)this.pick(this.mouse(event));this.drag=null;});
+    root.addEventListener('pointerup',event=>{
+      if(this.drag&&!this.drag.moved){
+        const distance=this.pick(this.mouse(event));
+        if(this.marking&&distance!=null)this.onMark?.(distance);
+      }
+      this.drag=null;
+    });
     root.addEventListener('pointercancel',()=>this.drag=null);root.addEventListener('lostpointercapture',()=>this.drag=null);
     root.addEventListener('pointerleave',()=>{if(!this.drag)this.onCursor?.(null);});
     root.addEventListener('dblclick',()=>{this.disableFollow();this.fit();});
@@ -28,6 +34,8 @@ export class TrajectoryMap {
   }
   mouse(event){const rect=this.root.getBoundingClientRect();return [event.clientX-rect.left,event.clientY-rect.top];}
   disableFollow(){this.follow.checked=false;}
+  setMarking(enabled){this.marking=enabled;this.root.classList.toggle('marking',enabled);}
+  setSelection(bounds){this.selection=bounds;this.drawCursor();}
   setData(traces,axis){this.traces=traces;this.axis=axis;this.cursor=null;this.hasData=false;this.bounds=[Infinity,Infinity,-Infinity,-Infinity];let frame=null;
     this.lines=traces.map(trace=>{const track=trace.trajectory;if(!track?.available)return [];const key=JSON.stringify(track.frame);if(frame!==null&&key!==frame)return [];frame=key;const points=track.points;for(const point of points){if(!valid(point))continue;this.hasData=true;this.bounds[0]=Math.min(this.bounds[0],point.x_m);this.bounds[1]=Math.min(this.bounds[1],point.y_m);this.bounds[2]=Math.max(this.bounds[2],point.x_m);this.bounds[3]=Math.max(this.bounds[3],point.y_m);}return points;});
     const missing=traces.map((t,i)=>this.lines[i].length?'':`${i?'参考圈':'当前圈'}：${t.trajectory?.reason||'走线不可用'}`).filter(Boolean);
@@ -49,6 +57,33 @@ export class TrajectoryMap {
   axisValue(point){return this.axis==='distance'?point.distance_m:point.time_s;}
   pointAt(points,value){if(!finite(value))return null;for(let i=0;i<points.length;i++){const point=points[i],x=this.axisValue(point);if(!valid(point)||!finite(x))continue;if(Math.abs(x-value)<1e-8)return point;const prior=points[i-1];if(!valid(prior)||point.break_before)continue;const previousX=this.axisValue(prior);if(!finite(previousX)||x<=previousX||value<previousX||value>x)continue;const fraction=(value-previousX)/(x-previousX);return {x_m:prior.x_m+(point.x_m-prior.x_m)*fraction,y_m:prior.y_m+(point.y_m-prior.y_m)*fraction};}return null;}
   setCursor(value){this.cursor=value;if(this.follow.checked&&finite(value)&&this.hasData){const point=this.pointAt(this.lines[0]||[],value)||this.pointAt(this.lines[1]||[],value);if(point){this.center=[point.x_m,point.y_m];this.scale=Math.max(this.fitScale,Math.min(this.fitScale*256,3));this.manuallyMoved=true;this.draw();return;}}this.drawCursor();}
-  drawCursor(){const {c}=this.context(this.overlay);const labels=[];this.lines?.forEach((points,index)=>{const point=this.pointAt(points,this.cursor);if(!point){if(this.traces[index])labels.push(`${index?'参考':'当前'}无定位`);return;}const [x,y]=this.screen(point);c.beginPath();c.arc(x,y,index?5:7,0,Math.PI*2);c.fillStyle=index?'#11171d':COLORS[index];c.fill();c.strokeStyle=COLORS[index];c.lineWidth=2;c.stroke();labels.push(`${index?'参考':'当前'}第 ${this.traces[index].ordinal} 圈`);});this.position.textContent=finite(this.cursor)?`${this.axis==='distance'?this.cursor.toFixed(1)+' m':this.cursor.toFixed(3)+' s'} · ${labels.join(' / ')}`:'悬停走线或驾驶曲线，查看同位置标记';}
-  pick(mouse){if(!this.hasData)return;let nearest=144,selected=null;this.lines.forEach(points=>{for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];if(!valid(a)||!valid(b)||b.break_before)continue;const av=this.axisValue(a),bv=this.axisValue(b);if(!finite(av)||!finite(bv)||bv<=av)continue;const [ax,ay]=this.screen(a),[bx,by]=this.screen(b);const dx=bx-ax,dy=by-ay;const length=dx*dx+dy*dy;if(!length)continue;const f=Math.max(0,Math.min(1,((mouse[0]-ax)*dx+(mouse[1]-ay)*dy)/length));const d=(ax+dx*f-mouse[0])**2+(ay+dy*f-mouse[1])**2;if(d<nearest){nearest=d;selected=av+(bv-av)*f;}}});if(selected!==null)this.onCursor?.(selected);}
+  drawSelection(ctx){
+    if(this.axis!=='distance'||!this.selection)return;
+    const points=this.lines?.find(line=>line.length);
+    if(!points)return;
+    const [start,end]=this.selection;
+    ctx.strokeStyle='#ccaff5';
+    ctx.lineWidth=4;
+    ctx.beginPath();
+    // 裁剪到区间边界，地图缺口与不连续位置不会被选区连起来。
+    for(let i=1;i<points.length;i++){
+      const a=points[i-1],b=points[i],lo=a.distance_m,hi=b.distance_m;
+      if(!valid(a)||!valid(b)||b.break_before||!finite(lo)||!finite(hi)||hi<=lo||hi<=start||lo>=end)continue;
+      const [ax,ay]=this.screen(a),[bx,by]=this.screen(b);
+      const from=(Math.max(lo,start)-lo)/(hi-lo),to=(Math.min(hi,end)-lo)/(hi-lo);
+      ctx.moveTo(ax+(bx-ax)*from,ay+(by-ay)*from);
+      ctx.lineTo(ax+(bx-ax)*to,ay+(by-ay)*to);
+    }
+    ctx.stroke();
+    ctx.fillStyle='#ccaff5';ctx.font='11px Segoe UI';
+    for(const [distance,label] of start===end?[[start,'起']]:[[start,'起'],[end,'终']]){
+      const point=this.pointAt(points,distance);
+      if(!point)continue;
+      const [x,y]=this.screen(point);
+      ctx.fillRect(x-3,y-3,6,6);
+      ctx.fillText(label,x+8,y-7);
+    }
+  }
+  drawCursor(){const {c}=this.context(this.overlay);this.drawSelection(c);const labels=[];this.lines?.forEach((points,index)=>{const point=this.pointAt(points,this.cursor);if(!point){if(this.traces[index])labels.push(`${index?'参考':'当前'}无定位`);return;}const [x,y]=this.screen(point);c.beginPath();c.arc(x,y,index?5:7,0,Math.PI*2);c.fillStyle=index?'#11171d':COLORS[index];c.fill();c.strokeStyle=COLORS[index];c.lineWidth=2;c.stroke();labels.push(`${index?'参考':'当前'}第 ${this.traces[index].ordinal} 圈`);});this.position.textContent=finite(this.cursor)?`${this.axis==='distance'?this.cursor.toFixed(1)+' m':this.cursor.toFixed(3)+' s'} · ${labels.join(' / ')}`:'悬停走线或驾驶曲线，查看同位置标记';}
+  pick(mouse){if(!this.hasData)return null;let nearest=144,selected=null;this.lines.forEach(points=>{for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];if(!valid(a)||!valid(b)||b.break_before)continue;const av=this.axisValue(a),bv=this.axisValue(b);if(!finite(av)||!finite(bv)||bv<=av)continue;const [ax,ay]=this.screen(a),[bx,by]=this.screen(b);const dx=bx-ax,dy=by-ay;const length=dx*dx+dy*dy;if(!length)continue;const f=Math.max(0,Math.min(1,((mouse[0]-ax)*dx+(mouse[1]-ay)*dy)/length));const d=(ax+dx*f-mouse[0])**2+(ay+dy*f-mouse[1])**2;if(d<nearest){nearest=d;selected=av+(bv-av)*f;}}});if(selected!==null)this.onCursor?.(selected);return selected;}
 }

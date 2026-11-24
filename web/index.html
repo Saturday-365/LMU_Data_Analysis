@@ -13,7 +13,7 @@
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="LMU 遥测工作台首页"><span class="brand-mark">L/</span><span>LMU<span class="brand-sub">个人遥测工作台</span></span></a>
-    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.3</span></div>
+    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.4</span></div>
     <button id="open-archive" class="session-item archive-nav active" aria-current="page">个人圈速</button>
     <label id="dropzone" class="import-box" for="file-input"><span class="import-icon">＋</span><strong>批量导入遥测</strong><span>点击选择或拖入 .duckdb</span><small id="import-limit">文件保存在本机</small></label>
     <input id="file-input" class="sr-only" type="file" accept=".duckdb" multiple aria-label="选择遥测文件">
@@ -32,9 +32,28 @@
         <button id="empty-import" class="primary" type="button">选择遥测文件</button>
       </div>
       <div id="archive-content" hidden>
+        <nav class="view-navigation archive-navigation" aria-label="圈速档案视图">
+          <button id="archive-show-overview" type="button" aria-pressed="true">赛道总览</button>
+          <button id="archive-show-detail" type="button" aria-pressed="false">历史趋势</button>
+        </nav>
+        <section id="archive-overview" aria-label="所有赛道">
+          <div class="metrics overview-metrics">
+            <div><span>赛道布局</span><strong id="overview-layouts">—</strong></div>
+            <div><span>录制会话</span><strong id="overview-sessions">—</strong></div>
+            <div><span>完整圈</span><strong id="overview-complete-laps">—</strong></div>
+            <div><span>纳入节奏统计</span><strong id="overview-pace-laps">—</strong></div>
+          </div>
+          <div class="overview-heading"><h2>各赛道圈速</h2>
+            <label>会话类型 <select id="overview-type"><option value="">全部</option><option value="race">正赛</option><option value="qualify">排位</option><option value="practice">练习</option><option value="warmup">热身</option></select></label>
+          </div>
+          <div id="overview-tracks"></div>
+          <p class="info-note">圈速按布局、会话类型、组别与品牌汇总。中位圈和 P10–P90 由参与统计的原始圈时计算。分组信息缺失时记录圈数。点击品牌可查看历史趋势。</p>
+        </section>
+        <div id="archive-detail" hidden>
         <div class="controls archive-filters">
           <label><span>赛道布局</span><select id="archive-layout" aria-label="赛道布局"></select></label>
-          <label><span>车辆</span><select id="archive-car" aria-label="车辆"></select></label>
+          <label><span>品牌</span><select id="archive-car" aria-label="车辆品牌"></select></label>
+          <label><span>组别</span><select id="archive-class" aria-label="车辆组别"></select></label>
           <label><span>会话类型</span><select id="archive-type" aria-label="会话类型"></select></label>
         </div>
         <div class="metrics archive-metrics">
@@ -53,6 +72,7 @@
           <tbody id="archive-rows"></tbody>
         </table></div>
         <p class="info-note">节奏统计使用有记录圈时且无已知进站状态的完整圈。圈速波动为标准差，至少需要两圈；游戏判定的圈次有效性保持未知。</p>
+        </div>
       </div>
     </section>
     <section id="workspace" hidden>
@@ -71,7 +91,9 @@
       </div>
       <div id="lap-conditions" class="lap-conditions" aria-live="polite"></div>
       <div class="driving-layout"><div class="chart-stack">
-      <div class="chart-toolbar"><span id="cursor-position">移动鼠标查看数据</span><span>滚轮缩放 · 拖动平移 · 双击重置</span></div>
+      <div class="chart-toolbar"><span id="cursor-position">移动鼠标查看数据</span>
+        <button id="interval-pick" type="button" aria-pressed="false" disabled>标记区间</button></div>
+      <p id="interval-pick-status" class="interval-pick-status" role="status"></p>
       <div id="charts" class="charts" tabindex="0" role="group" aria-label="联动遥测曲线，左右方向键移动游标"></div>
       <div class="chart-footnote"><span id="axis-note">—</span><span>转向单位为 %，非方向盘角度</span></div>
       </div><section class="trajectory-panel" aria-label="走线对比">
@@ -92,10 +114,8 @@
             <p id="interval-library-status" role="status"></p>
           </div>
           <form id="interval-form">
-            <div><label>起点（m）<input id="interval-start" type="number" step="any" required></label>
-              <button id="interval-mark-start" type="button" title="使用最后一次距离游标作为起点">取游标</button></div>
-            <div><label>终点（m）<input id="interval-end" type="number" step="any" required></label>
-              <button id="interval-mark-end" type="button" title="使用最后一次距离游标作为终点">取游标</button></div>
+            <label>起点（m）<input id="interval-start" type="number" step="any" required></label>
+            <label>终点（m）<input id="interval-end" type="number" step="any" required></label>
             <button type="submit">查看区间</button>
           </form>
           <p id="interval-result" role="status"></p>

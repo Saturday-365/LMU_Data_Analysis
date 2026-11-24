@@ -1,6 +1,7 @@
 """Application services independent of HTTP and concrete persistence adapters."""
 
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median, pstdev
 from threading import RLock
@@ -16,7 +17,8 @@ from .trajectory import lap_trajectory
 from .conditions import extract_context, context_document, validate_changes
 from .track_reference import load_reference
 from .comparison import compare_distance, layout_key, share_trajectory_frame
-from .pace import analyze_pace, setup_labels
+from .pace import analyze_pace, distribution, setup_labels
+from .vehicles import normalized, vehicle_brand
 
 
 class TelemetryService:
@@ -162,12 +164,16 @@ class TelemetryService:
             return {'traces': traces, 'delta': compare_distance(traces)}
 
 
+def pace_laps(summary):
+    return [lap for lap in summary['complete_laps'] if lap['lap_time_s'] is not None and lap['lap_time_s'] > 0
+            and not lap.get('contains_pit_state')]
+
+
 def public_session(row, detail=False):
     data = row["summary"]
     laps = data["complete_laps"]
     times = [lap["lap_time_s"] for lap in laps if lap["lap_time_s"] is not None]
-    counted = [lap for lap in laps if lap['lap_time_s'] is not None and lap['lap_time_s'] > 0
-               and not lap.get('contains_pit_state')]
+    counted = pace_laps(data)
     best = min(counted, key=lambda lap: lap['lap_time_s'], default=None)
     pace_times = [lap['lap_time_s'] for lap in counted]
     # 直接读取已有目录摘要，历史页无需逐个重新打开 DuckDB。
@@ -176,9 +182,11 @@ def public_session(row, detail=False):
             'median_s': median(pace_times) if pace_times else None,
             'stddev_s': pstdev(pace_times) if len(pace_times) > 1 else None}
     metadata = data['metadata']
+    brand, source = vehicle_brand(metadata, row.get('vehicle_model'), row.get('brand_override'))
     result = {"id": row["id"], "driver_id": row["driver_id"], "filename": row["filename"],
               "created_at": row["created_at"], "metadata": metadata,
-              "vehicle_model": row.get('vehicle_model'), "pace": pace,
+              "vehicle_model": row.get('vehicle_model'), "vehicle_brand": brand,
+              "vehicle_brand_source": source, "pace": pace,
               "complete_lap_count": len(laps), "best_lap_s": min(times) if times else None,
               "duration_s": data["recording_end_s"]-data["recording_start_s"]}
     if detail:
@@ -188,3 +196,64 @@ def public_session(row, detail=False):
                        "diagnostics": data["diagnostics"], "catalog": data["catalog"],
                        "available_core_channels": data["available_core_channels"]})
     return result
+
+
+def recording_date(item):
+    value = item['metadata'].get('RecordingTime')
+    if value:
+        try:
+            dt = datetime.fromisoformat(value.replace('_', ':'))
+            if dt.tzinfo is not None:
+                return dt.astimezone(timezone.utc)
+        except ValueError:
+            pass
+    return None
+
+
+def overview_totals(items):
+    return {'sessions': len(items), 'complete_laps': sum(item['complete_lap_count'] for item in items),
+            'pace_laps': sum(item['pace']['count'] for item in items)}
+
+
+def catalog_overview(rows):
+    items = [public_session(row) for row in rows]
+    layouts = defaultdict(list)
+    for row, item in zip(rows, items):
+        layout = layout_key(item['metadata'])
+        # 未知布局只列记录，不与同名赛道的其他记录合并计时。
+        key = layout if all(layout) else ('', item['id'])
+        layouts[key].append((row, item))
+    cards = []
+    for records in layouts.values():
+        session_items = [item for _, item in records]
+        latest = max(session_items, key=lambda item: recording_date(item) or datetime.min.replace(tzinfo=timezone.utc))
+        groups = defaultdict(list)
+        for row, item in records:
+            metadata = item['metadata']
+            kind = normalized(metadata.get('SessionType'))
+            if kind == 'qualifying':
+                kind = 'qualify'
+            groups[(normalized(item['vehicle_brand']), normalized(metadata.get('CarClass')), kind)].append((row, item))
+        breakdown = []
+        for (brand, category, kind), members in groups.items():
+            result_items = [item for _, item in members]
+            sample = result_items[0]
+            # 未知组保留圈数，避免将可能来自不同车辆或会话类型的圈时混为节奏。
+            comparable = bool(brand and category and kind)
+            timed = [item for item in result_items if item['pace']['best_s'] is not None] if comparable else []
+            fastest = min(timed, key=lambda item: item['pace']['best_s'], default=None)
+            # 节奏用合并后的圈时计算，各会话的中位数不参与二次平均。
+            laps = [{'time_s': lap['lap_time_s'], 'ordinal': lap['complete_lap_number']}
+                    for row, _ in members for lap in pace_laps(row['summary'])] if comparable else []
+            breakdown.append({'session_id': sample['id'], 'kind': kind, 'brand': sample['vehicle_brand'],
+                              'class': sample['metadata'].get('CarClass'), **overview_totals(result_items),
+                              'pace': distribution(laps),
+                              'best_session': fastest['id'] if fastest else None,
+                              'best_ordinal': fastest['pace']['best_ordinal'] if fastest else None})
+        cards.append({'session_id': latest['id'], 'metadata': latest['metadata'], **overview_totals(session_items),
+                      'latest_at': latest['metadata'].get('RecordingTime') if recording_date(latest) else None,
+                      'groups': sorted(breakdown, key=lambda group: (
+                          {'race':0,'qualify':1,'practice':2,'warmup':3}.get(group['kind'],4),
+                          group['class'] or '', group['brand'] or '\uffff'))})
+    cards.sort(key=lambda item: recording_date(item) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return {'items': items, 'overview': {'totals': {**overview_totals(items), 'layouts': len(cards)}, 'layouts': cards}}

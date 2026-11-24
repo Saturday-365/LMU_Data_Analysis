@@ -13,14 +13,29 @@ export class TelemetryCharts {
       if(key==='delta'){row.hidden=true;row.classList.add('delta-row');values[1].hidden=true;}
       this.rows.push({key,element:row,plot,base:canvases[0],overlay:canvases[1],values,provenance:row.querySelector('.provenance')});
       plot.addEventListener('pointermove',e=>this.move(e,plot));
-      plot.addEventListener('pointerdown',e=>{if(!this.traces.length || e.button!==0)return;this.drag={x:e.clientX,range:[...this.range]};plot.setPointerCapture(e.pointerId);});
-      const end=()=>{this.drag=null;};plot.addEventListener('pointerup',end);plot.addEventListener('pointercancel',end);plot.addEventListener('lostpointercapture',end);
-      plot.addEventListener('pointerleave',()=>{if(!this.drag){this.cursor=null;this.hover();}});
-      plot.addEventListener('dblclick',()=>this.reset());
+      plot.addEventListener('pointerdown',e=>{
+        if(!this.traces.length || e.button!==0)return;
+        if(this.marking)this.brush={x:e.clientX,value:this.valueAt(e,plot),pointer:e.pointerId};
+        else this.drag={x:e.clientX,range:[...this.range]};
+        plot.setPointerCapture(e.pointerId);
+      });
+      plot.addEventListener('pointerup',e=>this.endPointer(e,plot));
+      const cancel=()=>{
+        if(this.brush)this.onRangePreview?.(null);
+        this.drag=this.brush=null;
+      };
+      plot.addEventListener('pointercancel',cancel);
+      plot.addEventListener('lostpointercapture',cancel);
+      plot.addEventListener('pointerleave',()=>{if(!this.drag&&!this.brush){this.cursor=null;this.hover();}});
+      plot.addEventListener('dblclick',()=>{if(!this.marking)this.reset();});
       plot.addEventListener('wheel',e=>{if(!this.traces.length)return;e.preventDefault();const fraction=this.fraction(e,plot);const [lo,hi]=this.range;const anchor=lo+(hi-lo)*fraction;const span=Math.min(this.full[1]-this.full[0],Math.max(this.axis==='distance'?10:.25,(hi-lo)*Math.exp(Math.sign(e.deltaY)*.18)));this.setRange(anchor-span*fraction,anchor+span*(1-fraction));},{passive:false});
     }
     new ResizeObserver(()=>this.draw()).observe(root);
-    root.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight'].includes(e.key)||!this.traces.length)return;e.preventDefault();const [lo,hi]=this.range;this.cursor=Math.min(hi,Math.max(lo,(this.cursor??lo)+(hi-lo)/200*(e.key==='ArrowRight'?1:-1)));this.hover();});
+    root.addEventListener('keydown',e=>{
+      if(this.marking&&e.key==='Enter'&&this.cursor!==null){e.preventDefault();this.onMark?.(this.cursor);return;}
+      if(!['ArrowLeft','ArrowRight'].includes(e.key)||!this.traces.length)return;
+      e.preventDefault();const [lo,hi]=this.range;this.cursor=Math.min(hi,Math.max(lo,(this.cursor??lo)+(hi-lo)/200*(e.key==='ArrowRight'?1:-1)));this.hover();
+    });
   }
   setData(traces,axis,delta){
     this.traces=traces.filter(Boolean);
@@ -37,7 +52,28 @@ export class TelemetryCharts {
   rowTraces(row){return row.key==='delta' ? this.delta : this.traces;}
   xs(trace){return this.axis==='distance'?trace.distance_m:trace.time_s;}
   fraction(e,plot){const box=plot.getBoundingClientRect();return Math.min(1,Math.max(0,(e.clientX-box.left-45)/Math.max(1,box.width-62)));}
-  move(e,plot){const fraction=this.fraction(e,plot);if(this.drag){const shift=(e.clientX-this.drag.x)/Math.max(1,plot.clientWidth-62)*(this.drag.range[1]-this.drag.range[0]);this.setRange(this.drag.range[0]-shift,this.drag.range[1]-shift);}this.cursor=this.range[0]+fraction*(this.range[1]-this.range[0]);this.hover();}
+  valueAt(e,plot){const [lo,hi]=this.range;return lo+this.fraction(e,plot)*(hi-lo);}
+  move(e,plot){
+    if(this.drag){
+      const shift=(e.clientX-this.drag.x)/Math.max(1,plot.clientWidth-62)*(this.drag.range[1]-this.drag.range[0]);
+      this.setRange(this.drag.range[0]-shift,this.drag.range[1]-shift);
+    }
+    this.cursor=this.valueAt(e,plot);
+    if(this.brush?.pointer===e.pointerId){
+      this.onRangePreview?.(Math.abs(e.clientX-this.brush.x)>=5?[this.brush.value,this.cursor]:null);
+    }else this.hover();
+  }
+  endPointer(e,plot){
+    this.drag=null;
+    const brush=this.brush;
+    if(brush?.pointer!==e.pointerId)return;
+    this.brush=null;
+    const value=this.valueAt(e,plot);
+    if(Math.abs(e.clientX-brush.x)>=5)this.onRange?.([brush.value,value]);
+    else this.onMark?.(value);
+  }
+  setMarking(enabled){this.marking=enabled;if(!enabled)this.brush=null;}
+  setSelection(bounds){this.selection=bounds;this.hover();}
   setRange(lo,hi){const [start,end]=this.full;if(lo<start){hi+=start-lo;lo=start;}if(hi>end){lo-=hi-end;hi=end;}this.range=[Math.max(start,lo),Math.min(end,hi)];this.draw();}
   reset(){this.range=[...this.full];this.cursor=null;this.draw();}
   setCursor(value){if(value===null){this.cursor=null;this.hover();return;}this.cursor=Math.max(this.full[0],Math.min(this.full[1],value));if(this.cursor<this.range[0]||this.cursor>this.range[1]){const half=(this.range[1]-this.range[0])/2;this.setRange(this.cursor-half,this.cursor+half);}else this.hover();}
@@ -60,6 +96,19 @@ export class TelemetryCharts {
     for(const row of this.rows){
       if(row.element.hidden)continue;
       const {c}=this.context(row.overlay), geo=row.geometry;
+      if(geo&&this.axis==='distance'&&this.selection){
+        const [lo,hi]=this.range;
+        const x=value=>geo.left+(value-lo)/(hi-lo)*(geo.right-geo.left);
+        const [start,end]=this.selection;
+        if(end>=lo&&start<=hi){
+          const a=x(Math.max(start,lo)),b=x(Math.min(end,hi));
+          c.fillStyle='#b79de62b';c.fillRect(a,geo.top,Math.max(1,b-a),geo.bottom-geo.top);
+          c.strokeStyle='#ccaff5';c.setLineDash([]);
+          for(const value of new Set([start,end]))if(value>=lo&&value<=hi){
+            c.beginPath();c.moveTo(x(value),geo.top);c.lineTo(x(value),geo.bottom);c.stroke();
+          }
+        }
+      }
       if(geo&&cursor!==null){
         const x=geo.left+(cursor-this.range[0])/(this.range[1]-this.range[0])*(geo.right-geo.left);
         c.strokeStyle='#cbd4dc77';c.setLineDash([3,3]);c.beginPath();c.moveTo(x,geo.top);c.lineTo(x,geo.bottom);c.stroke();

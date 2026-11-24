@@ -16,11 +16,15 @@ const trajectory = new TrajectoryMap($('trajectory-map'), $('trajectory-status')
 const insights = new SessionInsights(api, new SessionPace(api, selectSession));
 const conditions = new PracticeConditions(api, notice, trajectory);
 const archive = new PaceArchive(selectSession);
-const intervals = new IntervalReview(api, focusInterval, value => charts.setCursor(value));
-charts.onCursor = value => {
-  trajectory.setCursor(value);
-  intervals.recordCursor(value, charts.axis);
-};
+const intervals = new IntervalReview(api, focusInterval, value => charts.setCursor(value), {
+  prepare: () => {if(charts.axis !== 'distance'){state.axis = 'distance';setAxis();}},
+  active: enabled => {charts.setMarking(enabled);trajectory.setMarking(enabled);},
+  highlight: bounds => {charts.setSelection(bounds);trajectory.setSelection(bounds);},
+});
+charts.onCursor = value => trajectory.setCursor(value);
+charts.onRangePreview = bounds => intervals.previewMark(bounds);
+charts.onRange = bounds => intervals.applyMark(bounds);
+charts.onMark = trajectory.onMark = value => intervals.markPoint(value);
 trajectory.onCursor = value => charts.setCursor(value);
 
 let noticeTimer;
@@ -72,12 +76,14 @@ function renderSessions(){
 }
 
 async function refreshSessions(){
-  state.sessions = (await api('/sessions')).items;
+  const data = await api('/sessions');
+  state.sessions = data.items;
   renderSessions();
-  archive.setSessions(state.sessions);
+  archive.setSessions(state.sessions,data.overview);
 }
 
 function showArchive(){
+  intervals.clear();
   state.session = null;
   state.reference = null;
   state.sessionRequest++;
@@ -91,6 +97,7 @@ function showArchive(){
   $('page-label').textContent = '个人圈速';
   $('open-archive').classList.add('active');
   $('open-archive').setAttribute('aria-current', 'page');
+  archive.show('overview');
   renderSessions();
 }
 
@@ -322,7 +329,7 @@ $('lap-select').onchange = loadTraces;
 $('reference-select').onchange = loadTraces;
 $('reference-session').onchange = changeReference;
 $('axis-distance').onclick = () => {state.axis = 'distance'; setAxis();};
-$('axis-time').onclick = () => {state.axis = 'time'; setAxis();};
+$('axis-time').onclick = () => {intervals.cancelMarking();state.axis = 'time';setAxis();};
 $('reset-zoom').onclick = () => charts.reset();
 $('file-input').onchange = event => importFiles(event.target.files);
 $('empty-import').onclick = () => $('file-input').click();
