@@ -82,6 +82,7 @@ function renderSessions(){
 async function refreshSessions(){
   const data = await api('/sessions');
   state.sessions = data.items;
+  $('export-laps').hidden = data.overview.totals.complete_laps === 0;
   renderSessions();
   archive.setSessions(state.sessions);
   overview.setData(data.overview,archive.sessions);

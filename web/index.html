@@ -14,7 +14,7 @@
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="LMU 遥测工作台首页"><span class="brand-mark">L/</span><span>LMU<span class="brand-sub">个人遥测工作台</span></span></a>
-    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.5</span></div>
+    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.51</span></div>
     <button id="open-archive" class="session-item archive-nav active" aria-current="page">个人圈速</button>
     <label id="dropzone" class="import-box" for="file-input"><span class="import-icon">＋</span><strong>批量导入遥测</strong><span>点击选择或拖入 .duckdb</span><small>至少 1 分钟 · 至少 1 个完整圈</small><small id="import-limit">文件保存在本机</small></label>
     <input id="file-input" class="sr-only" type="file" accept=".duckdb" multiple aria-label="选择遥测文件">
@@ -26,7 +26,10 @@
     <header class="topbar"><span>工作空间 <span class="slash">/</span> <strong id="page-label">个人圈速</strong></span><span class="local-badge"><span class="status-dot"></span> 仅本机</span></header>
     <details id="import-report" class="import-report" hidden><summary id="import-summary" aria-live="polite"></summary><ul id="import-results"></ul></details>
     <section id="archive" aria-labelledby="archive-title">
-      <div class="session-heading"><h1 id="archive-title">个人赛道档案</h1></div>
+      <div class="session-heading">
+        <h1 id="archive-title">个人赛道档案</h1>
+        <a id="export-laps" class="archive-link archive-download" href="/api/v1/archive/laps.csv" download hidden>导出全部圈速 CSV</a>
+      </div>
       <p id="archive-loading" class="view-status" role="status">正在读取本地档案…</p>
       <div id="archive-empty" class="archive-panel archive-empty" hidden>
         <h2>还没有遥测记录</h2><p>导入 LMU 的原生遥测文件，建立你的个人圈速档案。</p>

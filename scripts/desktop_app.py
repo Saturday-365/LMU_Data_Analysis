@@ -21,7 +21,7 @@ if not getattr(sys, 'frozen', False):
 
 from lmu_data_analysis.web_app import create_app
 
-TITLE = 'LMU 个人遥测工作台 V0.5'
+TITLE = 'LMU 个人遥测工作台 V0.51'
 APP_DIR = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData' / 'Local') / 'LMU Data Analysis'
 
 
@@ -96,6 +96,8 @@ def run_window(data_dir, report):
                     if report is not None:
                         window.destroy()
 
+            # 由 WebView2 通过 Windows 保存对话框导出档案。
+            webview.settings['ALLOW_DOWNLOADS'] = True
             webview.start(check_window, gui='edgechromium', private_mode=True,
                           storage_path=str(data_dir / 'webview'))
         finally:

@@ -4,7 +4,7 @@
 
 ## 启动
 
-Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.5.exe`。V0.5 拒绝重复遥测，导入要求录制时长至少 1 分钟且有至少 1 个完整圈。运行及构建方法见 [桌面版 V0.5](docs/desktop-v0.5.md)。
+Windows 桌面发行版可解压后双击 `LMU-Data-Analysis-v0.51.exe`。个人赛道档案支持导出完整圈的 CSV。运行及构建方法见 [桌面版 V0.51](docs/desktop-v0.51.md)。
 
 双击根目录 `start-web.cmd`，再打开 **http://127.0.0.1:8765**。首次安装和操作说明见 [网页使用说明](docs/web-usage.md)。
 

@@ -1,4 +1,7 @@
 """HTTP integration tests against real synthetic DuckDB files and local persistence."""
+from codecs import BOM_UTF8
+import csv
+from io import StringIO
 from pathlib import Path
 import tempfile
 import unittest
@@ -133,6 +136,41 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(self.client.get('/api/v1/sessions').json()['items'][0]['vehicle_brand'], 'Ferrari')
         self.assertEqual(latest['pace'], {'count':2, 'best_s':10, 'best_ordinal':1, 'median_s':10, 'stddev_s':0})
+
+    def test_archive_csv_exports_owned_laps_and_preserves_missing_times(self):
+        with duckdb.connect(str(self.source)) as connection:
+            connection.executemany('INSERT INTO metadata VALUES (?, ?)', [
+                ('TrackName', '=Monza, test'), ('RecordingTime', '2026-11-21T20_23_11+08_00'),
+                ('SessionType', 'Qualifying'), ('CarClass', 'GT3')])
+            connection.execute('INSERT INTO "In Pits" VALUES (20, 1)')
+            connection.execute('DELETE FROM "Lap Time" WHERE ts=25')
+        payload = self.source.read_bytes()
+        url = '/api/v1/archive/laps.csv'
+        with TestClient(create_app(self.data, identity=TestIdentity())) as client:
+            def csv_rows(response):
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.content.startswith(BOM_UTF8))
+                return list(csv.DictReader(StringIO(response.content.decode('utf-8-sig'), newline='')))
+
+            self.assertEqual(csv_rows(client.get(url)), [])
+            self.upload(client, content=payload, **{'x-test-owner':'another-owner', 'x-filename':'other.duckdb'})
+            saved = self.upload(client, content=payload).json()['session']
+            edited = client.patch(f"/api/v1/sessions/{saved['id']}/conditions", headers={'x-lmu-client':'web'},
+                                  json={'changes':{'brand':{'state':'known','value':'法拉利'},
+                                                   'model':{'state':'known','value':'车型, GT3'}}})
+            self.assertEqual(edited.status_code, 200, edited.text)
+            with patch('lmu_data_analysis.web_service.read_recording', side_effect=AssertionError('export reopened telemetry')):
+                response = client.get(url)
+            self.assertEqual(response.headers['content-disposition'], 'attachment; filename="LMU-Lap-Archive.csv"')
+            first, second = csv_rows(response)
+            self.assertEqual(first['会话编号'], saved['id'])
+            self.assertEqual(first['录制文件'], 'sample.duckdb')
+            self.assertEqual(first['录制时间（UTC）'], '2026-11-21T12:23:11+00:00')
+            self.assertEqual(first['赛道'], "'=Monza, test")
+            self.assertEqual((first['会话类型'], first['品牌'], first['车型']), ('排位', 'Ferrari', '车型, GT3'))
+            self.assertEqual((first['源圈号'], first['官方圈时（秒）'], first['纳入节奏统计']), ('1','10.000','是'))
+            self.assertEqual((second['官方圈时（秒）'], second['记录到进站状态'], second['纳入节奏统计']), ('','是','否'))
+            self.assertNotIn('PRIVATE_TEST', response.content.decode('utf-8-sig'))
 
     def test_compare_across_sessions_checks_layout_ownership_and_delta(self):
         with duckdb.connect(str(self.source)) as connection:

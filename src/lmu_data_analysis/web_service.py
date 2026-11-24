@@ -1,7 +1,9 @@
 """Application services independent of HTTP and concrete persistence adapters."""
 
 from collections import OrderedDict, defaultdict
+import csv
 from datetime import datetime, timezone
+from io import StringIO
 import math
 from pathlib import Path
 from statistics import median, pstdev
@@ -240,6 +242,42 @@ def overview_totals(items):
 def session_kind(metadata):
     kind = normalized(metadata.get('SessionType'))
     return 'qualify' if kind == 'qualifying' else kind
+
+
+def csv_cell(value):
+    # 防止录制名称或补录文本在电子表格里被当作公式。
+    if isinstance(value, str) and value.lstrip().startswith(('=', '+', '-', '@', '＝', '＋', '－', '＠')):
+        return "'" + value
+    return value
+
+
+def archive_laps_csv(rows):
+    output = StringIO(newline='')
+    writer = csv.writer(output)
+    writer.writerow(('会话编号', '录制时间（UTC）', '录制文件', '赛道', '布局', '会话类型',
+                     '品牌', '组别', '车型', '完整圈序号', '源圈号', '官方圈时（秒）',
+                     '记录到进站状态', '纳入节奏统计'))
+    session_labels = {'practice': '练习', 'qualify': '排位', 'race': '正赛', 'warmup': '热身'}
+    for row in rows:
+        summary = row['summary']
+        metadata = summary['metadata']
+        date = recording_date(summary)
+        model = row.get('vehicle_model')
+        brand, _ = vehicle_brand(metadata, model, row.get('brand_override'))
+        session_fields = (row['id'], date.isoformat(timespec='seconds') if date else None, row['filename'],
+                          metadata.get('TrackName'), metadata.get('TrackLayout'),
+                          session_labels.get(session_kind(metadata), metadata.get('SessionType')),
+                          brand, metadata.get('CarClass'), model)
+        pace_ordinals = {lap['complete_lap_number'] for lap in pace_laps(summary)}
+        for lap in summary['complete_laps']:
+            ordinal = lap['complete_lap_number']
+            seconds = lap['lap_time_s']
+            pit_state = lap.get('contains_pit_state')
+            writer.writerow([*(csv_cell(value) for value in session_fields), ordinal, lap.get('source_lap'),
+                             f'{seconds:.3f}' if seconds is not None else None,
+                             None if pit_state is None else '是' if pit_state else '否',
+                             '是' if ordinal in pace_ordinals else '否'])
+    return output.getvalue().encode('utf-8-sig')
 
 
 def overview_breakdown(records):

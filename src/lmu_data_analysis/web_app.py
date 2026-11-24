@@ -6,7 +6,7 @@ from typing import Protocol
 from urllib.parse import unquote, urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 from starlette.concurrency import run_in_threadpool
@@ -15,7 +15,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from .models import TelemetryError
 from .comparison import layout_key
 from .storage import LocalBlobStore, SQLiteSessionRepository
-from .web_service import ImportRejected, TelemetryService, catalog_overview, public_session
+from .web_service import ImportRejected, TelemetryService, archive_laps_csv, catalog_overview, public_session
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_DRIVER_ID = "b9919ff0-6e03-4a15-91dc-68f58ee21516"
@@ -45,7 +45,7 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
     blobs = blobs or LocalBlobStore(directory / "recordings")
     identity = identity or LocalIdentity()
     service = TelemetryService(repository, blobs, directory / 'track-resources')
-    app = FastAPI(title="LMU Data Analysis", version="0.5.0-local", docs_url=None, redoc_url=None)
+    app = FastAPI(title="LMU Data Analysis", version="0.51.0-local", docs_url=None, redoc_url=None)
     app.state.service = service
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -81,6 +81,12 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
     @app.get("/api/v1/sessions")
     def sessions(request: Request):
         return catalog_overview(repository.list_sessions(driver(request)["id"]))
+
+    @app.get("/api/v1/archive/laps.csv")
+    def export_archive_laps(request: Request):
+        rows = repository.list_sessions(driver(request)["id"])
+        return Response(archive_laps_csv(rows), media_type="text/csv",
+                        headers={"Content-Disposition": 'attachment; filename="LMU-Lap-Archive.csv"'})
 
     @app.get("/api/v1/sessions/{session_id}")
     def session_detail(session_id: str, request: Request):
