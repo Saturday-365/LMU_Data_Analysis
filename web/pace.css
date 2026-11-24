@@ -1,9 +1,11 @@
-#pace-laps, #pace-compare {
+#pace-laps, .pace-spread-chart {
   display: block;
   width: 100%;
 }
 #pace-laps { height: 225px; cursor: crosshair; }
-#pace-compare { height: 113px; margin: 12px 0; }
+#pace-compare { margin: 12px 0; }
+.pace-spread-panel .archive-panel-heading { margin-bottom: 8px; }
+#pace-spread-note { margin: 5px 0 0; }
 
 #pace-summary { margin: 0; }
 #pace-track-note { margin: 5px 0 0; }

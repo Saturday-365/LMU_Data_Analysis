@@ -1,9 +1,9 @@
 import {dateLabel, lapTime, timestamp, trackName, typeLabel} from './archive.js';
+import {PaceSpread, stintColor, stintSpreadRows} from './pace-spread.js';
 
 const $ = id => document.getElementById(id);
 const RACE_LENGTHS = [['short','20 分钟内'],['medium','20–40 分钟'],
   ['long','40–60 分钟'],['endurance','60 分钟及以上']];
-const COLORS = ['#79cfd6','#ffb48b','#bea5e8','#9ccd90'];
 const BOUNDARIES = {pit_entry:'进站',pit_exit:'出站',recording_start:'录制起点',recording_end:'录制结束',first_observation:'首次观测'};
 
 function node(tag,text,className){
@@ -38,13 +38,11 @@ export class CircuitOverview {
     this.api = api;
     this.openSession = openSession;
     this.openGroup = openGroup;
-    this.chart = $('latest-chart');
-    this.graphRows = [];
+    this.spread = new PaceSpread($('latest-chart'));
     this.latestId = null;
     $('overview-track').onchange = event => {
       $(event.target.value)?.scrollIntoView({block:'start'});
     };
-    new ResizeObserver(() => this.drawSpread()).observe(this.chart);
   }
 
   setData(overview,sessions){
@@ -96,7 +94,7 @@ export class CircuitOverview {
     if(this.latestId === id) return;
     this.latestId = id;
     this.showFacts(session);
-    this.graphRows = [];
+    this.spread.setRows([]);
     $('latest-stints').hidden = $('latest-spread').hidden = true;
     $('latest-status').textContent = '正在读取驾驶段…';
     try{
@@ -115,7 +113,7 @@ export class CircuitOverview {
     const {stints,pit_visits:pits,duration_s:duration,statistics} = data;
     const timeline = $('latest-timeline');
     timeline.replaceChildren();
-    const parts = [...stints.map(stint=>({...stint,label:`驾驶段 ${stint.number}`,color:COLORS[(stint.number-1)%COLORS.length]})),
+    const parts = [...stints.map(stint=>({...stint,label:`驾驶段 ${stint.number}`,color:stintColor(stint.number)})),
       ...pits.map(pit=>({...pit,label:'已观测进站',color:'#97a2ad'}))].sort((a,b)=>a.start_s-b.start_s);
     const timelineLabels = [];
     for(const part of parts){
@@ -140,61 +138,10 @@ export class CircuitOverview {
       addCells(body.insertRow(),[label,stats.count,best,lapTime(stats.median_s),BOUNDARIES[stint.end_kind]]);
     }
     $('latest-stints').hidden = !stints.length;
-    this.graphRows = stints.filter(stint=>stint.statistics.count).map(stint=>({
-      title:`第 ${stint.number} 段`,stats:stint.statistics,color:COLORS[(stint.number-1)%COLORS.length],
-    }));
-    if(!this.graphRows.length && statistics.count){
-      this.graphRows = [{title:'整场',stats:statistics,color:COLORS[0]}];
-    }
-    this.chart.setAttribute('aria-label',this.graphRows.map(({title,stats})=>
-      `${title}最快 ${lapTime(stats.best_s)}，中位 ${lapTime(stats.median_s)}，最慢 ${lapTime(stats.slowest_s)}`).join('；'));
-    this.chart.style.height = `${Math.min(280, 34 + 28 * this.graphRows.length)}px`;
-    $('latest-spread').hidden = !this.graphRows.length;
-    this.drawSpread();
-  }
-
-  drawSpread(){
-    const rows = this.graphRows;
-    const {width,height} = this.chart.getBoundingClientRect();
-    if(!rows.length || width < 150 || height < 40) return;
-    const ratio = window.devicePixelRatio || 1;
-    this.chart.width = Math.round(width*ratio);
-    this.chart.height = Math.round(height*ratio);
-    const ctx = this.chart.getContext('2d');
-    ctx.setTransform(ratio,0,0,ratio,0,0);
-    const best = Math.min(...rows.map(row=>row.stats.best_s));
-    const slowest = Math.max(...rows.map(row=>row.stats.slowest_s));
-    const margin = Math.max(.05,(slowest-best)*.07);
-    const lo = Math.max(0,best-margin),hi = slowest+margin;
-    const left = 53,right = width-42, axis = height-18;
-    const x = value => left+(right-left)*(value-lo)/(hi-lo);
-    ctx.font = '11px Segoe UI';
-    ctx.textAlign = 'center';
-    ctx.strokeStyle = '#33414c';
-    ctx.fillStyle = '#a7b2bc';
-    for(let i=0;i<=4;i++){
-      const value = lo+(hi-lo)*i/4, px = x(value);
-      ctx.beginPath();
-      ctx.moveTo(px,5);ctx.lineTo(px,axis-4);ctx.stroke();
-      ctx.fillText(lapTime(value),px,height-4);
-    }
-    ctx.textAlign = 'left';
-    rows.forEach(({title,stats,color},index)=>{
-      const y = 7+(axis-10)*(index+.5)/rows.length;
-      ctx.strokeStyle = ctx.fillStyle = color;
-      ctx.fillText(title,0,y+4);
-      const fastest = x(stats.best_s), slow = x(stats.slowest_s), median = x(stats.median_s);
-      ctx.beginPath();ctx.moveTo(fastest,y);ctx.lineTo(slow,y);ctx.stroke();
-      if(stats.p10_s != null && stats.p90_s != null){
-        ctx.globalAlpha = .45;
-        const start = x(stats.p10_s);
-        ctx.fillRect(start,y-5,Math.max(1,x(stats.p90_s)-start),10);
-        ctx.globalAlpha = 1;
-      }
-      ctx.fillRect(fastest-1,y-3,2,6);
-      ctx.fillRect(slow-1,y-3,2,6);
-      ctx.fillRect(median-1,y-7,2,14);
-    });
+    const rows = stintSpreadRows(stints);
+    if(!rows.length && statistics.count) rows.push({label:'整场',stats:statistics,color:'#b0bcc6'});
+    $('latest-spread').hidden = !rows.length;
+    this.spread.setRows(rows);
   }
 
   renderTracks(layouts){

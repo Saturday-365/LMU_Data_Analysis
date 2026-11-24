@@ -1,7 +1,7 @@
 import {dateLabel, lapTime, sameGroup, typeLabel} from './archive.js';
+import {PaceSpread, stintColor, stintSpreadRows} from './pace-spread.js';
 
 const $ = id => document.getElementById(id);
-const colors = ['#ff955f', '#72cdd4', '#c3a5ec', '#a5d28c'];
 const starts = {recording_start:'录制起点', first_observation:'首次观测', pit_exit:'出站'};
 const ends = {recording_end:'录制结束', pit_entry:'进站'};
 const number = new Intl.NumberFormat('zh-CN', {maximumFractionDigits:2});
@@ -74,7 +74,8 @@ export class SessionPace {
     this.openLap = openLap;
     this.request = this.referenceRequest = 0;
     this.timeline = $('pace-laps');
-    this.comparison = $('pace-compare');
+    this.spread = new PaceSpread($('pace-spread-chart'));
+    this.comparison = new PaceSpread($('pace-compare'));
     this.sessionB = $('pace-b-session');
     this.scopeA = $('pace-a-scope');
     this.scopeB = $('pace-b-scope');
@@ -86,14 +87,15 @@ export class SessionPace {
       if(lap) this.openLap(this.session.id, lap.ordinal);
     };
     new ResizeObserver(() => this.drawTimeline()).observe(this.timeline);
-    new ResizeObserver(() => this.drawComparison()).observe(this.comparison);
   }
 
   setSession(session){
     this.request++;
     this.referenceRequest++;
     this.session = session;
-    this.a = this.b = this.compared = null;
+    this.a = this.b = null;
+    this.spread.setRows([]);
+    this.comparison.setRows([]);
     this.loading = false;
     this.timelinePoints = [];
     $('pace-content').hidden = true;
@@ -112,8 +114,9 @@ export class SessionPace {
       const [data, catalog] = await Promise.all([this.api(`/sessions/${id}/pace`), this.api('/sessions')]);
       if(generation !== this.request) return;
       this.a = data;
-      this.b = this.compared = null;
+      this.b = null;
       this.renderTimeline();
+      this.renderSpread();
       this.renderStints();
       refillScopes(this.scopeA, data);
       const current = catalog.items.find(item => item.id === id);
@@ -141,7 +144,7 @@ export class SessionPace {
 
   async loadReference(){
     const sequence = ++this.referenceRequest;
-    this.b = this.compared = null;
+    this.b = null;
     this.scopeB.disabled = true;
     this.scopeB.replaceChildren(new Option('—', ''));
     this.renderComparison();
@@ -175,6 +178,16 @@ export class SessionPace {
     this.drawTimeline();
   }
 
+  renderSpread(){
+    const {statistics, stints} = this.a;
+    const rows = stintSpreadRows(stints);
+    if(statistics.count) rows.unshift({label:'整场',stats:statistics,color:'#b0bcc6'});
+    this.spread.setRows(rows);
+    $('pace-spread-note').textContent = rows.length
+      ? '端点为最快与最慢圈，竖线为中位圈。每行至少有 5 圈时显示 P10–P90 色带。'
+      : '此会话没有可用于圈速分布的完整计时圈。';
+  }
+
   drawTimeline(){
     if(!this.a || this.timeline.hidden) return;
     const surface = canvasContext(this.timeline);
@@ -188,7 +201,7 @@ export class SessionPace {
     const y = value => top + (value - low) * (bottom - top) / (high - low);
     for(const stint of data.stints){
       ctx.globalAlpha = .1;
-      ctx.fillStyle = colors[(stint.number - 1) % colors.length];
+      ctx.fillStyle = stintColor(stint.number);
       ctx.fillRect(x(stint.start_s),top,x(stint.end_s) - x(stint.start_s),bottom - top);
     }
     ctx.globalAlpha = .22;
@@ -211,7 +224,7 @@ export class SessionPace {
     this.timelinePoints = [];
     for(const lap of data.laps.filter(lap => lap.eligible)){
       const px = x(lap.end_s), py = y(lap.time_s);
-      ctx.fillStyle = lap.stint ? colors[(lap.stint - 1) % colors.length] : '#aab5c0';
+      ctx.fillStyle = lap.stint ? stintColor(lap.stint) : '#aab5c0';
       point(ctx,px,py,4);
       this.timelinePoints.push({x:px,y:py,ordinal:lap.ordinal});
     }
@@ -253,7 +266,6 @@ export class SessionPace {
 
   renderComparison(){
     const status = $('pace-ab-status'), content = $('pace-ab-content');
-    this.compared = null;
     content.hidden = true;
     if(!this.b){
       status.textContent = this.sessionB.disabled ? '需要同布局、车辆和会话类型的录制，或本场至少两个有圈速的驾驶段。'
@@ -286,43 +298,10 @@ export class SessionPace {
         row.insertCell().textContent = text;
       }
     }
-    this.compared = [aa,bb];
     content.hidden = false;
-    this.drawComparison();
-  }
-
-  drawComparison(){
-    if(!this.compared) return;
-    const surface = canvasContext(this.comparison);
-    if(!surface) return;
-    const {context:ctx,width,height} = surface;
-    const left = 40, right = width - 43;
-    const best = Math.min(...this.compared.map(stat => stat.best_s));
-    const slowest = Math.max(...this.compared.map(stat => stat.slowest_s));
-    const padding = Math.max(.05,(slowest - best) * .05), low = Math.max(0,best - padding), high = slowest + padding;
-    const x = value => left + (value - low) * (right - left) / (high - low);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#a8b2bd';
-    ctx.strokeStyle = '#374047';
-    for(let index = 0; index <= 4; index++){
-      const time = low + (high - low) * index / 4;
-      line(ctx,x(time),15,x(time),height-29);
-      ctx.fillText(lapTime(time),x(time),height-10);
-    }
-    this.compared.forEach((stats,index) => {
-      const y = 37 + index * 33;
-      ctx.fillStyle = ctx.strokeStyle = colors[index];
-      ctx.lineWidth = 1.5;
-      ctx.fillText(index ? 'B' : 'A',17,y+4);
-      line(ctx,x(stats.best_s),y,x(stats.slowest_s),y);
-      if(stats.p10_s != null){
-        ctx.globalAlpha = .55;
-        ctx.fillRect(x(stats.p10_s),y-9,Math.max(1,x(stats.p90_s)-x(stats.p10_s)),18);
-        ctx.globalAlpha = 1;
-      }
-      line(ctx,x(stats.median_s),y-12,x(stats.median_s),y+12);
-      point(ctx,x(stats.best_s),y,3);
-      point(ctx,x(stats.slowest_s),y,3);
-    });
+    this.comparison.setRows([
+      {label:'A', stats:aa, color:'#ff955f'},
+      {label:'B', stats:bb, color:'#72cdd4'},
+    ]);
   }
 }

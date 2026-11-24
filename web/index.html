@@ -15,7 +15,7 @@
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="LMU 遥测工作台首页"><span class="brand-mark">L/</span><span>LMU<span class="brand-sub">个人遥测工作台</span></span></a>
-    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.55</span></div>
+    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.56</span></div>
     <button id="open-archive" class="session-item archive-nav active" aria-current="page">个人圈速</button>
     <label id="dropzone" class="import-box" for="file-input"><span class="import-icon">＋</span><strong>批量导入遥测</strong><span>点击选择或拖入 .duckdb</span><small>至少 1 分钟 · 至少 1 个完整圈</small><small id="import-limit">文件保存在本机</small></label>
     <input id="file-input" class="sr-only" type="file" accept=".duckdb" multiple aria-label="选择遥测文件">
@@ -70,7 +70,7 @@
                 </table></div>
               </div>
               <section id="latest-spread" class="latest-spread" hidden aria-label="圈速分布">
-                <h3>圈速分布</h3><canvas id="latest-chart" role="img"></canvas>
+                <h3>圈速分布</h3><canvas id="latest-chart" class="pace-spread-chart" role="img"></canvas>
                 <p class="info-note">竖线为中位圈，色带为 P10–P90，两端为最快和最慢圈。</p>
               </section>
             </section>
@@ -209,6 +209,11 @@
             <canvas id="pace-laps" role="img" aria-label="录制时间轴上的圈速，背景区分赛道与维修区"></canvas>
             <p id="pace-track-note" class="info-note"></p>
           </section>
+          <section class="archive-panel pace-spread-panel" aria-labelledby="pace-spread-title">
+            <div class="archive-panel-heading"><h2 id="pace-spread-title">圈速分布</h2></div>
+            <canvas id="pace-spread-chart" class="pace-spread-chart" role="img" hidden></canvas>
+            <p id="pace-spread-note" class="info-note"></p>
+          </section>
           <section aria-labelledby="pace-stint-title">
             <div class="archive-panel-heading"><h2 id="pace-stint-title">连续驾驶段</h2></div>
             <div class="table-scroll" id="pace-stint-table" hidden><table class="pace-table">
@@ -228,7 +233,7 @@
             <div id="pace-ab-content" hidden>
               <div class="pace-context"><section><h3 id="pace-a-title"></h3><p id="pace-a-conditions"></p></section>
                 <section><h3 id="pace-b-title"></h3><p id="pace-b-conditions"></p></section></div>
-              <canvas id="pace-compare" role="img" aria-label="A 与 B 的最快圈、最慢圈、中位圈和 P10–P90 范围，具体数值见下表"></canvas>
+              <canvas id="pace-compare" class="pace-spread-chart" role="img" hidden></canvas>
               <div class="table-scroll"><table class="pace-table">
                 <thead><tr><th scope="col">指标</th><th scope="col">A</th><th scope="col">B</th><th scope="col">B − A</th></tr></thead>
                 <tbody id="pace-ab-rows"></tbody>
