@@ -1,8 +1,9 @@
 # Local telemetry and working outputs
+/Data_Telemetry/
+/Telemetry.zip
 /samples/local/*
 !/samples/local/.gitkeep
 /samples/LMU_SourseData/
-/samples/RacingLabPicture/
 /outputs/
 /data/
 /logs/
@@ -18,6 +19,17 @@
 *.ld
 *.ldx
 *.log
+
+# Local reference photos and screenshots
+/Example_web_Photo/
+/samples/RacingLabPicture/
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+/*.gif
+/*.bmp
+/*.heic
 
 # Secrets and local settings
 .env
