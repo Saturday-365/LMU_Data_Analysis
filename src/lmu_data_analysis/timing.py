@@ -11,6 +11,10 @@ def positive(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0
 
 
+def eligible_lap(segment):
+    return segment.kind == 'complete' and positive(segment.lap_time_s) and not segment.contains_pit_state
+
+
 def at_event(rows, timestamp):
     return next((value for ts, value in rows if abs(ts-timestamp) <= 1e-6), None)
 
@@ -72,7 +76,7 @@ def timing_summary(recording, stored_laps):
             ordinal += 1
         stored = by_ordinal.get(ordinal) if complete else None
         sectors, sources, notes = split_times(recording, segment)
-        eligible = complete and positive(segment.lap_time_s) and not segment.contains_pit_state
+        eligible = eligible_lap(segment)
         reason = None if eligible else ('不完整或计时异常' if not complete else '包含维修区状态' if segment.contains_pit_state else '缺少已记录圈时')
         rows.append({'segment_id':segment.segment_id, 'lap_id':stored['id'] if stored else None,
                      'ordinal':ordinal if complete else None, 'source_lap':segment.source_lap,

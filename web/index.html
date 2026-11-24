@@ -7,12 +7,13 @@
   <link rel="stylesheet" href="/assets/trajectory.css">
   <link rel="stylesheet" href="/assets/conditions.css">
   <link rel="stylesheet" href="/assets/archive.css">
+  <link rel="stylesheet" href="/assets/pace.css">
   <script type="module" src="/assets/app.js"></script>
 </head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="LMU 遥测工作台首页"><span class="brand-mark">L/</span><span>LMU<span class="brand-sub">个人遥测工作台</span></span></a>
-    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.1</span></div>
+    <div class="workspace-label"><span class="status-dot"></span> 本地档案 <span class="version">桌面 V0.2</span></div>
     <button id="open-archive" class="session-item archive-nav active" aria-current="page">个人圈速</button>
     <label id="dropzone" class="import-box" for="file-input"><span class="import-icon">＋</span><strong>批量导入遥测</strong><span>点击选择或拖入 .duckdb</span><small id="import-limit">文件保存在本机</small></label>
     <input id="file-input" class="sr-only" type="file" accept=".duckdb" multiple aria-label="选择遥测文件">
@@ -57,7 +58,7 @@
     <section id="workspace" hidden>
       <div class="session-heading"><div><h1 id="track-name">—</h1><p id="car-name"></p></div><span id="session-type" class="outline-badge">练习</span></div>
       <p id="condition-summary" class="condition-summary"></p>
-      <nav class="view-navigation" aria-label="分析视图"><button data-view="telemetry" aria-pressed="true">驾驶曲线</button><button data-view="timing" aria-pressed="false">圈速总览</button><button data-view="inventory" aria-pressed="false">数据目录</button><button data-view="conditions" aria-pressed="false">练习信息</button></nav>
+      <nav class="view-navigation" aria-label="分析视图"><button data-view="telemetry" aria-pressed="true">驾驶曲线</button><button data-view="timing" aria-pressed="false">圈速总览</button><button data-view="pace" aria-pressed="false">节奏与调教</button><button data-view="inventory" aria-pressed="false">数据目录</button><button data-view="conditions" aria-pressed="false">练习信息</button></nav>
       <section id="view-telemetry">
       <div class="metrics"><div><span>最短记录圈</span><strong id="best-lap">—</strong><small>完整圈 · 有效性未核实</small></div><div><span>完整圈数</span><strong id="lap-count">—</strong><small id="fragment-count">—</small></div><div><span>录制时长</span><strong id="duration">—</strong><small id="recorded-date">—</small></div></div>
       <div class="analysis-header"><div><h2>驾驶数据</h2><span id="selection-note">选择圈次进行分析</span></div><div class="legend"><span class="main-dot"></span> 当前圈 <span class="ref-dot"></span> 参考圈</div></div>
@@ -113,6 +114,43 @@
           <div class="table-scroll"><table class="timing-table"><caption class="sr-only">每圈圈时、S1、S2、S3 及与最快圈差值</caption><thead><tr><th scope="col">圈次</th><th scope="col">圈时</th><th scope="col">S1</th><th scope="col">S2</th><th scope="col">S3</th><th scope="col">距最快圈</th><th scope="col">统计状态</th></tr></thead><tbody id="timing-rows"></tbody><tfoot id="timing-totals"></tfoot></table></div>
           <p id="timing-scope" class="info-note"></p><p id="timing-extra" class="info-note"></p>
           <details class="data-details"><summary>统计口径与分段来源</summary><p id="timing-method"></p><p>平均值、最快圈和标准差只使用纳入统计的圈次。理论最快由这些圈中可核对的最短分段相加得到，保留原始精度计算后再显示到毫秒。缺失分段显示“—”，不补零；未完成圈只展示已完成且可核对的分段，不参与统计。当前无法确认游戏判定的有效圈 / 删圈状态。</p></details>
+        </div>
+      </section>
+      <section id="view-pace" hidden aria-label="节奏与调教">
+        <p id="pace-status" class="view-status" role="status"></p>
+        <div id="pace-content" hidden>
+          <section class="archive-panel" aria-labelledby="pace-lap-title">
+            <div class="archive-panel-heading"><h2 id="pace-lap-title">逐圈节奏</h2><span class="info-note" id="pace-summary"></span></div>
+            <canvas id="pace-laps" role="img" aria-label="录制时间轴上的圈速，背景区分赛道与维修区"></canvas>
+            <p id="pace-track-note" class="info-note"></p>
+          </section>
+          <section aria-labelledby="pace-stint-title">
+            <div class="archive-panel-heading"><h2 id="pace-stint-title">连续驾驶段</h2></div>
+            <div class="table-scroll" id="pace-stint-table" hidden><table class="pace-table">
+               <thead><tr><th scope="col">驾驶段 / 边界</th><th scope="col">统计圈次</th><th scope="col">最快圈</th><th scope="col">中位圈</th><th scope="col">P10–P90 圈速</th><th scope="col">标准差</th><th scope="col">末 3 圈对比首 3 圈</th></tr></thead>
+               <tbody id="pace-stints"></tbody>
+            </table></div>
+            <p id="pace-stint-note" class="info-note" role="status"></p>
+          </section>
+          <section class="archive-panel" aria-labelledby="pace-ab-title">
+            <div class="archive-panel-heading"><h2 id="pace-ab-title">调教 A/B 对照</h2></div>
+            <div class="controls pace-controls">
+              <label><span>A · 当前会话</span><select id="pace-a-scope" aria-label="A 对比范围"></select></label>
+              <label><span>B · 参考会话</span><select id="pace-b-session" aria-label="B 参考会话"></select></label>
+              <label><span>B · 范围</span><select id="pace-b-scope" aria-label="B 对比范围" disabled></select></label>
+            </div>
+            <p id="pace-ab-status" class="info-note" role="status"></p>
+            <div id="pace-ab-content" hidden>
+              <div class="pace-context"><section><h3 id="pace-a-title"></h3><p id="pace-a-conditions"></p></section>
+                <section><h3 id="pace-b-title"></h3><p id="pace-b-conditions"></p></section></div>
+              <canvas id="pace-compare" role="img" aria-label="A 与 B 的最快圈、最慢圈、中位圈和 P10–P90 范围，具体数值见下表"></canvas>
+              <div class="table-scroll"><table class="pace-table">
+                <thead><tr><th scope="col">指标</th><th scope="col">A</th><th scope="col">B</th><th scope="col">B − A</th></tr></thead>
+                <tbody id="pace-ab-rows"></tbody>
+              </table></div>
+              <p class="info-note">调教标签来自手工补录。条件按整场展示，差值反映实测节奏，仍受环境、燃油和驾驶等因素影响。</p>
+            </div>
+          </section>
         </div>
       </section>
       <section id="view-inventory" hidden aria-label="数据目录">

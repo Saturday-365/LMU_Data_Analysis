@@ -140,6 +140,15 @@ def create_app(data_dir=None, *, web_dir=None, identity=None, repository=None, b
         except (TelemetryError, OSError) as error:
             raise HTTPException(422, "无法读取圈速信息，请检查原始文件") from error
 
+    @app.get('/api/v1/sessions/{session_id}/pace')
+    def pace(session_id: str, request: Request):
+        try:
+            return service.pace(driver(request)['id'], session_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        except (TelemetryError, OSError) as error:
+            raise HTTPException(422, '无法读取会话节奏，请检查原始文件。') from error
+
     @app.get("/api/v1/sessions/{session_id}/inventory")
     def inventory(session_id: str, request: Request):
         try:

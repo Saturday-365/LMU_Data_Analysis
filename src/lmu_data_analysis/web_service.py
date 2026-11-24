@@ -16,6 +16,7 @@ from .trajectory import lap_trajectory
 from .conditions import extract_context, context_document, validate_changes
 from .track_reference import load_reference
 from .comparison import compare_distance, layout_key, share_trajectory_frame
+from .pace import analyze_pace, setup_labels
 
 
 class TelemetryService:
@@ -30,15 +31,18 @@ class TelemetryService:
     def conditions(self, driver_id, session_id, lap_id=None):
         with self.lock:
             session, recording = self._recording(driver_id, session_id)
-            key = (driver_id, session_id)
-            if key not in self.context_cache:
-                with self.blobs.materialize(session['blob_key']) as path:
-                    self.context_cache[key] = extract_context(path, recording)
-                while len(self.context_cache) > 2:
-                    self.context_cache.popitem(last=False)
-            self.context_cache.move_to_end(key)
-            return context_document(session, recording, self.context_cache[key],
+            return context_document(session, recording, self._context(driver_id, session, recording),
                                     self.repository.get_annotations(driver_id, session_id), lap_id)
+
+    def _context(self, driver_id, session, recording):
+        key = (driver_id, session['id'])
+        if key not in self.context_cache:
+            with self.blobs.materialize(session['blob_key']) as path:
+                self.context_cache[key] = extract_context(path, recording)
+            while len(self.context_cache) > 2:
+                self.context_cache.popitem(last=False)
+        self.context_cache.move_to_end(key)
+        return self.context_cache[key]
 
     def update_conditions(self, driver_id, session_id, payload, lap_id=None):
         with self.lock:
@@ -72,6 +76,21 @@ class TelemetryService:
         with self.lock:
             session, recording = self._recording(driver_id, session_id)
             return timing_summary(recording, session['laps'])
+
+    def pace(self, driver_id, session_id):
+        with self.lock:
+            session, recording = self._recording(driver_id, session_id)
+            result = analyze_pace(recording, session['laps'])
+            annotations = self.repository.get_annotations(driver_id, session_id)
+            result['setups'] = setup_labels(result['laps'], annotations)
+            for stint in result['stints']:
+                stint['setups'] = setup_labels(
+                    [lap for lap in result['laps'] if lap['stint'] == stint['number']], annotations)
+            fields = context_document(session, recording, self._context(driver_id, session, recording), annotations)
+            keys = {'fuel', 'ambient', 'track_temp', 'tyres', 'game_version'}
+            result['conditions'] = [{'key': item['key'], 'label': item['label'], 'effective': item['effective']}
+                                    for item in fields['fields'] if item['key'] in keys]
+            return result
 
     def inventory(self, driver_id, session_id):
         with self.lock:

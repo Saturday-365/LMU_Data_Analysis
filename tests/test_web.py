@@ -152,7 +152,11 @@ class WebTests(unittest.TestCase):
             inv = client.get(base+'/inventory').json()
             self.assertEqual(inv['continuous_count'],6)
             self.assertNotIn('PRIVATE_TEST',str(inv))
-            for endpoint in ('timing','inventory'):
+            pace = client.get(base+'/pace').json()
+            self.assertEqual(pace['statistics']['count'], 2)
+            self.assertEqual(pace['stints'][0]['start_kind'], 'pit_exit')
+            self.assertEqual(pace['stints'][0]['lap_ordinals'], [1, 2])
+            for endpoint in ('timing','inventory','pace'):
                 self.assertEqual(client.get(base+'/'+endpoint,headers={'x-test-owner':'driver-b'}).status_code,404)
         # Derived endpoints re-read existing blobs; no catalog migration or re-import required.
         with TestClient(create_app(self.data, identity=TestIdentity())) as restarted:

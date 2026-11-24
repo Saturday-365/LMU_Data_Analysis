@@ -257,7 +257,8 @@ def _read(connection, path: Path, before: str) -> Recording:
         position_series[key] = Series(key, name, unit, 'continuous', times,
                                        [numeric(value) for value in values], frequency,
                                        'reconstructed_gps_stride', False)
-    return Recording(path.name, before, metadata, clock, catalog, series, segments, diagnostics, checks, timing_events, position_series)
+    return Recording(path.name, before, metadata, clock, catalog, series, segments, diagnostics, checks, timing_events,
+                     position_series, pit_events=pits)
 
 
 def read_recording(source: str | Path) -> Recording:

@@ -2,6 +2,7 @@ import {TelemetryCharts} from './charts.js';
 import {SessionInsights} from './insights.js';
 import {TrajectoryMap} from './trajectory.js';
 import {PracticeConditions} from './conditions.js';
+import {SessionPace} from './pace.js';
 import {PaceArchive, dateLabel, lapTime, layoutKey, sameGroup, trackName, typeLabel, vehicleName} from './archive.js';
 
 const $ = id => document.getElementById(id);
@@ -11,7 +12,7 @@ const state = {
 };
 const charts = new TelemetryCharts($('charts'), $('cursor-position'));
 const trajectory = new TrajectoryMap($('trajectory-map'), $('trajectory-status'), $('trajectory-position'), $('trajectory-follow'));
-const insights = new SessionInsights(api);
+const insights = new SessionInsights(api, new SessionPace(api, selectSession));
 const conditions = new PracticeConditions(api, notice, trajectory);
 const archive = new PaceArchive(selectSession);
 charts.onCursor = value => trajectory.setCursor(value);
